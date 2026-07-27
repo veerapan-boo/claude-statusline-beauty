@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.0.0
+# statusline-beauty-version: 1.0.1
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -179,6 +179,33 @@ fast_mode=${F[17]}
 ctx_cache_write=${F[18]}
 version=${F[19]}
 session_id=${F[20]}
+
+# On Windows, Claude Code reports native paths — `C:\Users\Admin\project`, and
+# `transcript_path` likewise. Bash does not treat `\` as a separator, so every
+# path test against them fails: `[ -f "$transcript" ]` is false, so the turn
+# counters, cache hit rate and per-turn cost vanish; `last_agent_skill` cannot
+# stat the file, so the skill/agent/mcp/tool counts vanish; `_git_stats` cannot
+# enter the directory, so the whole git line vanishes; and `${cwd##*/}` finds no
+# `/` to strip, so the folder segment prints the FULL path — the one thing the
+# status line promises never to do.
+#
+# Rewrite to the MSYS form (`C:\Users\x` -> `/c/Users/x`) in pure bash: cygpath
+# would be a fork per path per render, and this runs on every platform because
+# the pattern cannot match a POSIX path anyway.
+_to_posix_path() {
+  local -n _p=$1
+  case "$_p" in
+    [A-Za-z]:[\\/]*)
+      local _d=${_p%%:*}
+      _p=${_p#?:}
+      _p=${_p//\\//}
+      _p="/${_d,,}${_p}"
+      ;;
+    *\\*) _p=${_p//\\//} ;;   # UNC or relative Windows path, no drive letter
+  esac
+}
+_to_posix_path cwd
+_to_posix_path transcript
 
 short_cwd="${cwd##*/}"
 

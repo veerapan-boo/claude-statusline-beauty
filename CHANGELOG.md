@@ -4,6 +4,26 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-07-28
+
+### Fixed
+- **Windows: most of the status line was missing.** Claude Code reports native
+  paths there — `cwd` and `transcript_path` arrive as `C:\Users\...`. Bash does
+  not treat `\` as a separator, so every path test against them failed silently
+  and took a segment with it:
+
+  | Segment | Why it disappeared |
+  |---|---|
+  | `🧩 skills` `🤖 agents` `🔌 mcp` `🔧 tools` | the transcript could not be stat'd |
+  | `♻️ turns` `💲/turn` `📀 cache HR` `📈 avg` | `[ -f "$transcript" ]` was false |
+  | `in:`/`out:` on the context bar | session token sums returned zero |
+  | the whole `🌐` git line | `_git_stats` could not enter the directory |
+  | `📁` | `${cwd##*/}` found no `/`, so it printed the **full path** — the one thing the status line promises never to do |
+
+  Paths are now rewritten to the MSYS form (`C:\Users\x` → `/c/Users/x`) in pure
+  bash, with no `cygpath` fork. Linux is untouched: the pattern cannot match a
+  POSIX path.
+
 ## [1.0.0] - 2026-07-28
 
 First public release.
