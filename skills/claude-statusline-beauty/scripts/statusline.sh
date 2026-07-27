@@ -180,7 +180,7 @@ ctx_cache_write=${F[18]}
 version=${F[19]}
 session_id=${F[20]}
 
-# On Windows, Claude Code reports native paths — `C:\Users\Admin\project`, and
+# On Windows, Claude Code reports native paths — a drive letter with backslashes, and
 # `transcript_path` likewise. Bash does not treat `\` as a separator, so every
 # path test against them fails: `[ -f "$transcript" ]` is false, so the turn
 # counters, cache hit rate and per-turn cost vanish; `last_agent_skill` cannot
@@ -189,7 +189,7 @@ session_id=${F[20]}
 # `/` to strip, so the folder segment prints the FULL path — the one thing the
 # status line promises never to do.
 #
-# Rewrite to the MSYS form (`C:\Users\x` -> `/c/Users/x`) in pure bash: cygpath
+# Rewrite to the MSYS form (`C:\dir\file` -> `/c/dir/file`) in pure bash: cygpath
 # would be a fork per path per render, and this runs on every platform because
 # the pattern cannot match a POSIX path anyway.
 _to_posix_path() {

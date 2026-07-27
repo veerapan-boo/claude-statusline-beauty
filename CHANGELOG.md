@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Windows: most of the status line was missing.** Claude Code reports native
-  paths there — `cwd` and `transcript_path` arrive as `C:\Users\...`. Bash does
+  paths there — `cwd` and `transcript_path` arrive with a drive letter and backslashes. Bash does
   not treat `\` as a separator, so every path test against them failed silently
   and took a segment with it:
 
@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | the whole `🌐` git line | `_git_stats` could not enter the directory |
   | `📁` | `${cwd##*/}` found no `/`, so it printed the **full path** — the one thing the status line promises never to do |
 
-  Paths are now rewritten to the MSYS form (`C:\Users\x` → `/c/Users/x`) in pure
+  Paths are now rewritten to the MSYS form (`C:\dir\file` → `/c/dir/file`) in pure
   bash, with no `cygpath` fork. Linux is untouched: the pattern cannot match a
   POSIX path.
 
