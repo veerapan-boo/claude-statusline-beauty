@@ -148,6 +148,36 @@ export GITHUB_TOKEN=ghp_...
 The check result is cached for 6 hours; `manage.sh update --force` bypasses the
 cache.
 
+## I installed/updated but the bar still shows the old thing
+
+**No restart is needed.** `settings.json` stores a *path*, and Claude Code runs
+that script fresh on every render — so a new version is live the moment
+`manage.sh` finishes writing it. What you are waiting for is the next render,
+not a reload.
+
+Claude Code renders on activity, so the quickest way to force one is simply to
+do something: send a message, or let a tool call complete. Sitting idle looking
+at a stale bar can look like the update failed when nothing is wrong.
+
+The same applies to `config.sh` edits — change a value, act once, and the next
+render reflects it.
+
+### If a *counter* specifically looks stale
+
+The skills / agents / mcp / tools counters are cached, but **not on a timer** —
+the cache key is the `size:mtime` signature of the session transcript plus every
+subagent transcript under it. The count is therefore recomputed exactly when a
+transcript grows, which in practice means *the next time a tool runs*. Between
+tool calls the number is intentionally frozen, because recounting an unchanged
+file on every render is pure waste.
+
+So a counter that looks one step behind is usually correct-as-of-the-last-tool-call
+rather than broken. Run any tool and it catches up. (`SLB_SHOW_TOOL_COUNTS=0`
+turns the whole segment, and its cost, off.)
+
+Caches live under `${TMPDIR:-/tmp}/claude-statusline-beauty-$UID/cache/` and are
+safe to delete; they rebuild on the next render.
+
 ## An update broke it
 
 It should not be possible: a downloaded script must pass a shebang check, a

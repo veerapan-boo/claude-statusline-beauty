@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Troubleshooting: "I installed/updated but the bar still shows the old
+  thing."** Two things that look like bugs but are not. First, no restart is
+  ever needed — `settings.json` stores a path and Claude Code runs that script
+  fresh on every render, so a new version is live as soon as `manage.sh`
+  finishes writing it; what you are waiting for is the next render, which
+  activity triggers. Second, a counter that looks one step behind is usually
+  correct as of the last tool call: the skills/agents/mcp/tools cache is keyed
+  on the `size:mtime` signature of the session and subagent transcripts, not on
+  a timer, so it recomputes exactly when a transcript grows. The section also
+  records where the cache lives, since the previous advice to "restart Claude
+  Code" sent people down the wrong path.
+
 ## [1.1.0] - 2026-07-28
 
 ### Added
