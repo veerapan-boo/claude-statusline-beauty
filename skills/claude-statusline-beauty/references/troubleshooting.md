@@ -28,6 +28,19 @@ still cannot see it.
 **Windows without Git Bash.** Claude Code falls back to PowerShell, which has no
 `bash`, and the line renders blank with no error at all. Install Git for Windows.
 
+**macOS with only the system bash.** Instead of a status line you get one line:
+
+```
+statusline-beauty needs bash >= 4.2 (running 3.2.57(1)-release) — install one with: brew install bash
+```
+
+`/bin/bash` is 3.2 and cannot run the script. Run `brew install bash`; nothing
+else needs changing, because the script finds the Homebrew bash and re-execs
+itself under it. If you see this message *after* installing it, check that
+`/opt/homebrew/bin/bash` (Apple silicon) or `/usr/local/bin/bash` (Intel) exists
+and is executable — those two paths are probed directly, precisely because
+Claude Code launched from the Dock often has no Homebrew on its `PATH`.
+
 **Run it by hand** to see the real error, which Claude Code swallows:
 
 ```bash
@@ -71,6 +84,9 @@ A font problem, not a script problem. See
 
 Expected on Windows: Git Bash provides no `/proc/loadavg`. Set `SLB_SHOW_CPU=0`
 to drop the row cleanly instead of leaving a gap.
+
+On macOS the bar comes from `sysctl -n vm.loadavg` instead, so it should be
+there; if it is not, run that command by hand — `doctor` probes the same thing.
 
 ## The git line is missing
 

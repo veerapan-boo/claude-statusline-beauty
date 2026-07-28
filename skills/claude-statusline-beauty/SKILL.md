@@ -1,10 +1,10 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.0.1
+version: 1.1.0
 author: veerapan-boo
 license: MIT
-tags: [claude-code, statusline, installer, updater, self-update, linux, windows, git-bash]
+tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
 ---
 
 # statusline-beauty
@@ -13,7 +13,7 @@ A multi-line status line for Claude Code, packaged so it installs and updates it
 
 ```
 ✨ Opus 5  |  📁 my-project +173 -104  |  🧩 5 skills  |  🤖 2 agents  |  🔌 4 mcp  |  🔧 87 tools
-🌿 $1.77  |  📅 ~$41.20/mo · 9.8M tok  |  ♻️ 12 turns  |  💲$0.02/turn  |  📀 cache HR 80%
+🌿 $1.77  |  📅 ~$41.20/mo · 9.8Mtok/mo  |  ♻️ 12 turns  |  💲$0.02/turn  |  📀 cache HR 80%
 🌐 main  |  ↑2  |  ± 3 files  |  4h
   🟡 ctx  [████████████████░░░░░░░░░]  67% · 670k/1M in:26.8k out:127.8k  ⚠️ 500k+
   🟢 5h   [█████░░░░░░░░░░░░░░░░░░░░]  23% · resets 3h 12m (07:45 PM)
@@ -59,7 +59,7 @@ it verbatim rather than composing your own.
 | Warning | Blocking? | What to do |
 |---|---|---|
 | `jq is not installed` | **yes** — `install` exits 1 | offer to run the command from the warning |
-| bash < 4.2 | **yes** — cannot be fixed from here | say so and stop; on macOS mention `brew install bash` |
+| bash < 4.2 | **yes** — cannot be fixed from here | say so and stop; the warning already carries `brew install bash` on macOS |
 | `git` / `curl` / `npm` missing | no | mention once, keep going |
 | Windows without Git Bash | no, but the bar renders blank | say Git for Windows is required |
 
@@ -179,9 +179,9 @@ fast and offline. Those two only show up in the live status line.
 | Platform | Status |
 |---|---|
 | Linux | supported |
+| macOS | supported — needs `brew install bash jq`; the script re-execs itself under the Homebrew bash |
 | Windows (Git Bash) | supported — the CPU bar is absent, since Git Bash has no `/proc/loadavg` |
 | Windows (no Git Bash) | **not supported** — Claude Code falls back to PowerShell and a bash status line renders blank |
-| macOS | not yet — system bash is 3.2 and several commands used here are GNU-only |
 
 Requirements: bash ≥ 4.2 and `jq`. `git`, `curl`/`wget` and `npm` are optional
 and only disable individual segments when missing.

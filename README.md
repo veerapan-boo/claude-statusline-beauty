@@ -5,7 +5,7 @@ packaged as an agent skill that installs, wires up and updates itself.
 
 ```
 ✨ Opus 5  |  📁 my-project +173 -104  |  🧩 5 skills  |  🤖 2 agents  |  🔌 4 mcp  |  🔧 87 tools
-🌿 $1.77  |  📅 ~$41.20/mo · 9.8M tok  |  ♻️ 12 turns  |  💲$0.02/turn  |  📀 cache HR 80%
+🌿 $1.77  |  📅 ~$41.20/mo · 9.8Mtok/mo  |  ♻️ 12 turns  |  💲$0.02/turn  |  📀 cache HR 80%
 🌐 main  |  ↑2  |  ± 3 files  |  4h
 🟡 ctx  [████████████████░░░░░░░░░]  67% · 670k/1M in:26.8k out:127.8k  ⚠️ 500k+
 🟢 5h   [█████░░░░░░░░░░░░░░░░░░░░]  23% · resets 3h 12m (07:45 PM)
@@ -102,9 +102,11 @@ Only `jq` and bash ≥ 4.2 are hard requirements; the installer refuses to
 continue without them. The rest are optional and degrade one segment each — no
 `git` means no git line, no `npm` means no `(LTS)` tag.
 
-**Linux** and **Windows with Git Bash** are supported. Windows *without* Git Bash
-is not: Claude Code falls back to PowerShell, where a bash status line renders
-blank. macOS is not supported yet (system bash is 3.2). See
+**Linux**, **macOS** and **Windows with Git Bash** are supported. Windows
+*without* Git Bash is not: Claude Code falls back to PowerShell, where a bash
+status line renders blank. On macOS run `brew install bash jq` — the system bash
+is 3.2 and too old; the script finds the Homebrew one and re-execs itself under
+it, so nothing in `settings.json` or `PATH` needs changing. See
 [platform notes](skills/claude-statusline-beauty/references/platform-notes.md).
 
 ## Configure

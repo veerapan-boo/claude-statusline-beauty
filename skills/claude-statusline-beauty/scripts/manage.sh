@@ -11,6 +11,27 @@
 #
 # Exit codes: 0 ok · 1 error · 2 usage · 3 settings.json conflict (needs --force)
 
+# ── Minimum bash, and the macOS re-exec ───────────────────────────
+# Same shim as statusline.sh, and for the same reason: macOS's /bin/bash is 3.2,
+# so on a stock Mac this script would refuse to install the very thing that
+# would have worked once installed. Nothing above uses bash-4 syntax, so 3.2
+# parses this far and we can hand the script to a newer interpreter. Arguments
+# are forwarded; SLB_REEXEC stops a second pass from exec'ing again.
+if [ -z "${BASH_VERSINFO[0]:-}" ] ||
+   [ "${BASH_VERSINFO[0]}" -lt 4 ] ||
+   { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 2 ]; }; then
+  if [ -z "${SLB_REEXEC:-}" ]; then
+    for _b in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null)"; do
+      [ -n "$_b" ] && [ -x "$_b" ] || continue
+      if "$_b" -c '[ "${BASH_VERSINFO[0]}" -gt 4 ] ||
+                   { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 2 ]; }' 2>/dev/null; then
+        export SLB_REEXEC=1
+        exec "$_b" "$0" "$@"
+      fi
+    done
+  fi
+fi
+
 set -uo pipefail
 
 REPO_OWNER="veerapan-boo"
@@ -411,8 +432,8 @@ SLB_SHOW_GIT=1
 # Skills / agents / mcp / tools counters on line 1.
 SLB_SHOW_TOOL_COUNTS=1
 
-# CPU bar. Needs /proc/loadavg, which Git Bash on Windows does not provide —
-# the bar is simply absent there.
+# CPU bar. Reads /proc/loadavg on Linux and `sysctl vm.loadavg` on macOS. Git
+# Bash on Windows provides neither, so the bar is simply absent there.
 SLB_SHOW_CPU=1
 
 # RAM bar, with free disk space appended.
@@ -478,7 +499,9 @@ collect_warnings() {
   WARNINGS=()
   if [ -z "${BASH_VERSINFO[0]:-}" ] || [ "${BASH_VERSINFO[0]}" -lt 4 ] ||
      { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 2 ]; }; then
-    WARNINGS+=("bash ${BASH_VERSION:-?} is too old — statusline-beauty needs 4.2 or newer")
+    local hint=""
+    [ "$PLATFORM" = "macos" ] && hint=" — install one with: brew install bash"
+    WARNINGS+=("bash ${BASH_VERSION:-?} is too old — statusline-beauty needs 4.2 or newer$hint")
   fi
   have jq   || WARNINGS+=("jq is not installed — the status line cannot render without it. $(jq_hint)")
   have git  || WARNINGS+=("git is not installed — the git line will be omitted")
@@ -486,9 +509,10 @@ collect_warnings() {
   if [ "$PLATFORM" = "windows" ]; then
     WARNINGS+=("Windows: Claude Code runs the status line through Git Bash, and falls back to PowerShell when Git Bash is absent — in which case a bash status line renders blank")
   fi
-  if [ "$PLATFORM" = "macos" ]; then
-    WARNINGS+=("macOS is not supported yet: the system bash is 3.2 and several commands used here are GNU-only")
-  fi
+  # macOS carries no blanket warning any more: the status line re-execs itself
+  # under a modern bash when it can find one, and every GNU-only command it used
+  # has a BSD path. What is left is the one case nothing can paper over — a Mac
+  # with no bash newer than the system 3.2 — and that is the bash warning above.
 }
 
 preflight() {
@@ -689,10 +713,23 @@ cmd_doctor() {
   have npm  && ok "npm  $(npm --version 2>/dev/null)"                      || warn "npm is missing — the (LTS) tag will not appear"
   say ""
   say "${B}system probes${N}"
-  [ -r /proc/loadavg ] && ok "/proc/loadavg  (CPU bar)"  || warn "/proc/loadavg absent — CPU bar will not render (normal on Git Bash)"
-  { have free || [ -r /proc/meminfo ]; } && ok "memory readable (RAM bar)" || warn "no free(1) and no /proc/meminfo — RAM bar will not render"
-  date -d '@0' >/dev/null 2>&1 && ok "date -d (GNU)"     || warn "date -d unsupported — reset times will not render"
-  stat -c '%s' "$0" >/dev/null 2>&1 && ok "stat -c (GNU)" || warn "stat -c unsupported — caching falls back to recomputation"
+  # Probe what each platform ACTUALLY uses. The old checks hard-coded the GNU
+  # spelling, so a healthy Mac was reported as three failures.
+  if [ "$PLATFORM" = "macos" ]; then
+    sysctl -n vm.loadavg >/dev/null 2>&1 && ok "sysctl vm.loadavg  (CPU bar)" \
+      || warn "sysctl vm.loadavg unavailable — CPU bar will not render"
+    { sysctl -n hw.memsize >/dev/null 2>&1 && have vm_stat; } && ok "sysctl + vm_stat  (RAM bar)" \
+      || warn "sysctl hw.memsize / vm_stat unavailable — RAM bar will not render"
+    stat -f '%z' "$0" >/dev/null 2>&1 && ok "stat -f (BSD)" \
+      || warn "stat -f unsupported — caching falls back to recomputation"
+  else
+    [ -r /proc/loadavg ] && ok "/proc/loadavg  (CPU bar)"  || warn "/proc/loadavg absent — CPU bar will not render (normal on Git Bash)"
+    { have free || [ -r /proc/meminfo ]; } && ok "memory readable (RAM bar)" || warn "no free(1) and no /proc/meminfo — RAM bar will not render"
+    stat -c '%s' "$0" >/dev/null 2>&1 && ok "stat -c (GNU)" || warn "stat -c unsupported — caching falls back to recomputation"
+  fi
+  df -Pk / >/dev/null 2>&1 && ok "df -Pk (disk free)" || warn "df -Pk unsupported — the disk-free suffix will be blank"
+  # No date probe: reset times and session duration are computed in bash
+  # arithmetic now, so there is no external date(1) dependency left to check.
   say ""
   say "${B}wiring${N}"
   local cur; cur=$(settings_command) || cur=""

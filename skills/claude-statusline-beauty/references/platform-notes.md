@@ -66,18 +66,74 @@ with its separators stripped and fails silently.
 
 ## macOS
 
-Not supported yet, and guarded rather than left to fail messily: the script exits
-immediately with a one-line message when bash is older than 4.2.
+Supported. Everything renders, including the CPU and RAM bars.
 
-Two independent problems:
+Requirements: `jq` (`brew install jq`) and a bash ≥ 4.2 — which macOS does not
+ship. `/bin/bash` is 3.2, frozen at the last GPLv2 release in 2007, and lacks
+both `readarray` and `printf '%(fmt)T'`.
 
-1. The system bash is 3.2 (2007), which lacks `readarray` and
-   `printf '%(fmt)T'`. Installing bash 5 via Homebrew fixes this half.
-2. Several commands are used with GNU-only flags: `stat -c`, `date -d`,
-   `find -printf`/`-newermt`, `df -BG`, and `free`. BSD equivalents differ.
+```sh
+brew install bash jq
+```
 
-Installing `coreutils` and `findutils` from Homebrew provides `gstat`, `gdate`
-and friends, but the script does not yet prefer them.
+**You do not have to change `PATH`, or the `settings.json` command.** The script
+re-execs itself: if the bash it was started with is too old, it looks for a newer
+one at `/opt/homebrew/bin/bash` (Apple silicon), `/usr/local/bin/bash` (Intel)
+and then on `PATH`, verifies the version, and hands itself over with `exec`.
+stdin — the session JSON — survives the switch untouched.
+
+This matters because Claude Code launched from the Dock inherits a minimal `PATH`
+that often has no Homebrew in it at all, so `bash` resolves to 3.2 even on a
+machine where `brew install bash` was run months ago. With no modern bash
+anywhere, the status line prints one line naming the fix instead of a wall of
+syntax errors:
+
+```
+statusline-beauty needs bash >= 4.2 (running 3.2.57(1)-release) — install one with: brew install bash
+```
+
+`git`, `curl`/`wget` and `npm` are optional — each only disables its own segment.
+
+### BSD userland
+
+macOS ships the BSD userland, not GNU coreutils, and the script speaks both
+rather than requiring `brew install coreutils`:
+
+| Used for | GNU | BSD / macOS |
+|---|---|---|
+| cache signatures | `stat -c '%s:%Y'` | `stat -f '%z:%m'` |
+| monthly transcript listing | `find -printf` | `find -exec stat +` |
+| free disk | `df -BG` | `df -Pk` (POSIX columns, both) |
+| CPU cores | `nproc` | `sysctl -n hw.ncpu` |
+| load average | `/proc/loadavg` | `sysctl -n vm.loadavg` |
+| memory | `free` / `/proc/meminfo` | `sysctl -n hw.memsize` + `vm_stat` |
+| bounding the `(LTS)` check | `timeout 5` | background job + watchdog |
+
+Two things are done in bash arithmetic rather than picking a side, because
+neither spelling is portable — `date -d` is GNU-only and `date -j -f` is
+BSD-only:
+
+- **ISO-8601 → epoch** (rate-limit resets, session duration)
+- **epoch → UTC ISO-8601** (the month window handed to `jq`)
+
+Both are exact, and they removed the last `date(1)` fork from the render.
+
+`df -Pk` is worth one note: BSD `df` adds three inode columns by default, so
+indexing the *Available* column from the end — which is how the script survives
+volume names containing spaces — lands on `ifree` instead and reports a
+plausible but entirely wrong number. `-P` pins the six-column POSIX layout on
+every platform.
+
+### RAM accounting
+
+There is no `MemAvailable` on macOS. The script reconstructs it from `vm_stat`
+as `free + inactive + speculative + purgeable` pages — the set the kernel can
+hand to a new allocation without swapping, which is what `MemAvailable` means on
+Linux. The page size is read from `vm_stat`'s own header rather than assumed: it
+is 16K on Apple silicon and 4K on Intel.
+
+Expect the percentage to sit higher than Activity Monitor's memory pressure
+graph. They measure different things — this is "used vs installed", not pressure.
 
 ## Terminal requirements
 

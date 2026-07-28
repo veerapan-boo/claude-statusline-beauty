@@ -4,6 +4,63 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-28
+
+### Added
+- **macOS support.** Previously the installer refused outright, on two grounds:
+  the system bash is 3.2, and the script used GNU-only tools throughout. Both
+  are addressed.
+
+  **bash.** `/bin/bash` is 3.2 and cannot run this script. It now re-execs
+  itself under a newer bash — `/opt/homebrew/bin/bash`, `/usr/local/bin/bash`,
+  then `PATH`, each version-checked before use — so neither `settings.json` nor
+  `PATH` needs editing. `exec` preserves stdin, so the session JSON survives the
+  switch. This also fixes the case that would otherwise be silent: Claude Code
+  launched from the Dock inherits a minimal `PATH` with no Homebrew in it, so
+  `bash` resolves to 3.2 even on a machine that has bash 5 installed. With no
+  modern bash anywhere, the one-line message now names the fix
+  (`brew install bash`) instead of just the problem.
+
+  **BSD userland.** Every GNU-only call gained a BSD path: `stat -c` → `stat -f`,
+  `nproc` → `sysctl -n hw.ncpu`, `/proc/loadavg` → `sysctl -n vm.loadavg`,
+  `free` / `/proc/meminfo` → `sysctl -n hw.memsize` + `vm_stat` (page size read
+  from its header — 16K on Apple silicon, 4K on Intel), and `timeout 5 npm view`
+  → a background job with a watchdog, since macOS ships no `timeout(1)` and the
+  `(LTS)` tag could never appear without one.
+
+### Changed
+- The month-to-date token figure reads `72.3Mtok/mo` instead of `72.3M tok`, so
+  both halves of the `📅` segment carry their own unit.
+- **`date(1)` is gone from the render path.** ISO-8601 → epoch and epoch → UTC
+  ISO-8601 are computed in bash arithmetic, because neither direction is
+  portable: `date -d` is GNU-only and `date -j -f` is BSD-only. Verified against
+  GNU `date` over 300 random timestamps plus leap-year, century and zone-offset
+  edge cases, and the month window matched across four timezones spanning DST
+  changes. Side effect: one fewer fork per render.
+- **`find -printf` → `find -exec stat +`** for the month-to-date transcript
+  listing. `-printf` is GNU-only, and on BSD find it is a usage error that
+  emptied the listing and would have removed the `📅` segment entirely. The
+  file signature changes from fractional to whole-second mtime, so the monthly
+  token cache re-warms once after upgrading (the `…` suffix marks it).
+- **`df -BG` → `df -Pk`.** `-BG` is GNU-only, and a bare `df` on macOS adds
+  three inode columns — enough to shift the Available column the script reads
+  onto `ifree` and report a plausible but entirely wrong disk-free figure. `-P`
+  pins the six-column POSIX layout everywhere.
+- `doctor` probes what each platform actually uses, instead of hard-coding the
+  GNU spelling and reporting a healthy Mac as three failures.
+
+### Fixed
+- **`🧠 xhigh` was mislabelled `Ultracode`.** They are not the same thing:
+  Ultracode is a separate `/effort ultracode` option — "xhigh + dynamic workflow
+  orchestration", session-only — so every plain xhigh session was reported as
+  one that fans out subagents. Nor can it be shown correctly: Claude Code
+  documents `effort.level` as `low | medium | high | xhigh | max`, ultracode is
+  not one of its values, and selecting it just reports `xhigh`. The effort level
+  is now printed verbatim; xhigh and max keep their gradient styling.
+- `_to_posix_path` used a `local -n` nameref, which is bash **4.3**, while the
+  script advertises and enforces 4.2. Rewritten with indirect expansion and
+  `printf -v`.
+
 ## [1.0.1] - 2026-07-28
 
 ### Fixed

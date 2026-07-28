@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.0.1
+# statusline-beauty-version: 1.1.0
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -11,7 +11,7 @@
 # Claude Code version and session_id
 #
 #   ✨ Opus  |  📁 my-project +173 -104  |  🧩 5 skills  |  🤖 2 agents  |  🔌 4 mcp  |  🔧 87 tools
-#   🌿 $1.77  |  📅 ~$41.20/mo · 9.8M tok  |  ♻️ 12 turns  |  💲$0.02/turn  |  📀 cache HR 80%  |  📈 avg ~1.2k/turn
+#   🌿 $1.77  |  📅 ~$41.20/mo · 9.8Mtok/mo  |  ♻️ 12 turns  |  💲$0.02/turn  |  📀 cache HR 80%  |  📈 avg ~1.2k/turn
 #   🌐 (worktree) feat/some-branch  |  ↑2  |  ± 3 files  |  4h
 #     🟡 ctx  [████████████████░░░░░░░░░]  67% · 670k/1M in:26.8k out:127.8k  ⚠️ 500k+
 #     🟢 5h   [█████░░░░░░░░░░░░░░░░░░░░]  23% · resets 3h 12m (07:45 PM)
@@ -23,14 +23,47 @@
 #
 # Every line can be switched off — see config.sh / references/configuration.md.
 
-# ── Minimum bash ──────────────────────────────────────────────────
-# Needs readarray (4.0) and printf '%(fmt)T' (4.2). macOS ships bash 3.2, which
-# would otherwise spray parse and runtime errors into the status bar. Fail with
-# one readable line and exit 0 so Claude Code shows the message, not the errors.
+# ── Platform ──────────────────────────────────────────────────────
+# ONE uname call, reused by the bash shim, the jq shim, and every GNU-vs-BSD
+# fork below. Everything down to the re-exec must stay bash-3.2-parseable.
+case "$(uname -s 2>/dev/null)" in
+  Darwin*)              _SLB_OS=macos ;;
+  MINGW*|MSYS*|CYGWIN*) _SLB_OS=windows ;;
+  *)                    _SLB_OS=linux ;;
+esac
+
+# ── Minimum bash, and the macOS re-exec ───────────────────────────
+# Needs readarray (4.0) and printf '%(fmt)T' (4.2). macOS still ships bash 3.2 —
+# frozen at the last GPLv2 release — as /bin/bash, and Claude Code launched from
+# the Dock inherits a PATH that often has no Homebrew in it at all, so `bash`
+# resolves to 3.2 even on a machine that HAS a modern one installed.
+#
+# Nothing above this point uses bash-4 syntax, so 3.2 reaches here cleanly and we
+# can simply hand the script to a newer interpreter: exec preserves stdin, and
+# the JSON payload has not been read yet, so the switch is invisible to the
+# caller. SLB_REEXEC is the recursion stop — if the interpreter we picked turns
+# out to be old too, the second pass prints the message instead of exec'ing.
+_slb_bash_ok() {   # $1 = interpreter path; true when it is bash >= 4.2
+  "$1" -c '[ "${BASH_VERSINFO[0]}" -gt 4 ] ||
+           { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 2 ]; }' 2>/dev/null
+}
 if [ -z "${BASH_VERSINFO[0]:-}" ] ||
    [ "${BASH_VERSINFO[0]}" -lt 4 ] ||
    { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 2 ]; }; then
-  printf '  statusline-beauty needs bash >= 4.2 (running %s)\n' "${BASH_VERSION:-unknown}"
+  if [ -z "${SLB_REEXEC:-}" ]; then
+    # Homebrew first (Apple silicon, then Intel), PATH last: on the broken path
+    # PATH is exactly what handed us 3.2, so it is the least likely to help.
+    for _b in /opt/homebrew/bin/bash /usr/local/bin/bash "$(command -v bash 2>/dev/null)"; do
+      [ -n "$_b" ] && [ -x "$_b" ] || continue
+      if _slb_bash_ok "$_b"; then
+        export SLB_REEXEC=1
+        exec "$_b" "$0" "$@"
+      fi
+    done
+  fi
+  printf '  statusline-beauty needs bash >= 4.2 (running %s)' "${BASH_VERSION:-unknown}"
+  [ "$_SLB_OS" = macos ] && printf ' — install one with: brew install bash'
+  printf '\n'
   exit 0
 fi
 
@@ -41,9 +74,9 @@ fi
 # "syntax error: invalid arithmetic operator (error token is "")". Strip CR
 # once here so all call sites below see clean LF. PIPESTATUS preserves jq's own
 # exit status, which _sum_tokens_month's failure handling depends on.
-# No-op on Linux, so behaviour there is unchanged.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
+# No-op elsewhere, so behaviour on Linux and macOS is unchanged.
+case "$_SLB_OS" in
+  windows)
     # Resolve jq WITHOUT relying on PATH. winget drops jq.exe in a versioned
     # Packages dir and only appends that dir to the *persistent* user PATH — any
     # process already running (the terminal, and Claude Code, which inherits its
@@ -66,6 +99,89 @@ case "$(uname -s)" in
     jq() { command "$_JQ" "$@" | tr -d '\r'; return "${PIPESTATUS[0]}"; }
     ;;
 esac
+
+# ── GNU vs BSD tool shims ─────────────────────────────────────────
+# macOS ships the BSD userland, where stat takes -f and a different format
+# language: %z is size (GNU %s), %m is mtime (GNU %Y), %N is the name (GNU %n).
+# Resolve it ONCE into variables rather than probing at each call site — a
+# `stat -c` feature test would be a fork on every render, on every platform, to
+# answer a question that cannot change between renders.
+if [ "$_SLB_OS" = macos ]; then
+  _STAT_F=-f; _FMT_MTIME='%m'; _FMT_SIG='%z:%m'; _FMT_NAMESIG='%N %z:%m'
+else
+  _STAT_F=-c; _FMT_MTIME='%Y'; _FMT_SIG='%s:%Y'; _FMT_NAMESIG='%n %s:%Y'
+fi
+
+# ── Portable date arithmetic ──────────────────────────────────────
+# Converting an ISO-8601 timestamp to epoch has no portable tool: `date -d` is
+# GNU-only and `date -j -f` is BSD-only, and bash's own printf '%(fmt)T' can
+# FORMAT an epoch but not PARSE a string, and only in the local zone. Transcript
+# timestamps and rate-limit resets both arrive as ISO strings, so do the
+# conversion in arithmetic instead — Howard Hinnant's civil-days algorithm is
+# exact for every date bash can represent, and costs no fork at all.
+#
+# Accepts "YYYY-MM-DDTHH:MM:SS", optionally with fractional seconds and a
+# trailing Z or ±HH[:]MM. No zone suffix is read as UTC, which is what Claude
+# Code writes. Prints epoch seconds; returns 1 on anything unparseable.
+_iso_to_epoch() {
+  local s=$1 y m d hh mm ss era yoe doy doe days adj=0
+  [[ $s =~ ^([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt\ ]([0-9]{2}):([0-9]{2}):([0-9]{2}) ]] || return 1
+  y=$((10#${BASH_REMATCH[1]})); m=$((10#${BASH_REMATCH[2]})); d=$((10#${BASH_REMATCH[3]}))
+  hh=$((10#${BASH_REMATCH[4]})); mm=$((10#${BASH_REMATCH[5]})); ss=$((10#${BASH_REMATCH[6]}))
+  # A zone offset means the civil time is ahead of (+) or behind (-) UTC, so it
+  # is SUBTRACTED from / ADDED to the epoch the fields would give if they were
+  # already UTC. Anchored at the end so the date's own hyphens cannot match.
+  if [[ $s =~ ([+-])([0-9]{2}):?([0-9]{2})$ ]]; then
+    adj=$(( (10#${BASH_REMATCH[2]} * 3600) + (10#${BASH_REMATCH[3]} * 60) ))
+    [ "${BASH_REMATCH[1]}" = "+" ] && adj=$(( -adj ))
+  fi
+  (( m <= 2 )) && (( y-- ))                      # March-based year: Feb 29 lands last
+  era=$(( (y >= 0 ? y : y - 399) / 400 ))
+  yoe=$(( y - era * 400 ))
+  doy=$(( (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1 ))
+  doe=$(( yoe * 365 + yoe/4 - yoe/100 + doy ))
+  days=$(( era * 146097 + doe - 719468 ))        # 719468 = days from 0000-03-01 to 1970-01-01
+  printf '%s' $(( days * 86400 + hh * 3600 + mm * 60 + ss + adj ))
+}
+
+# The inverse: epoch seconds -> "YYYY-MM-DDTHH:MM:SS.000Z", always UTC.
+# Same reason for hand-rolling it — `date -u -d @N` is GNU-only, `date -u -r N`
+# is BSD-only, and printf '%(fmt)T' can only render the LOCAL zone.
+_epoch_to_utc_iso() {
+  local z=$1 days secs era doe yoe doy mp y m d
+  days=$(( z / 86400 )); secs=$(( z % 86400 ))
+  (( secs < 0 )) && { secs=$(( secs + 86400 )); days=$(( days - 1 )); }
+  days=$(( days + 719468 ))
+  era=$(( (days >= 0 ? days : days - 146096) / 146097 ))
+  doe=$(( days - era * 146097 ))
+  yoe=$(( (doe - doe/1460 + doe/36524 - doe/146096) / 365 ))
+  y=$(( yoe + era * 400 ))
+  doy=$(( doe - (365*yoe + yoe/4 - yoe/100) ))
+  mp=$(( (5*doy + 2) / 153 ))
+  d=$(( doy - (153*mp + 2)/5 + 1 ))
+  m=$(( mp + (mp < 10 ? 3 : -9) ))
+  (( m <= 2 )) && (( y++ ))
+  printf '%04d-%02d-%02dT%02d:%02d:%02d.000Z' \
+    "$y" "$m" "$d" $(( secs/3600 )) $(( secs%3600/60 )) $(( secs%60 ))
+}
+
+# Epoch of LOCAL midnight on a YYYY-MM-DD day.
+# Reads the civil fields as if they were UTC, then subtracts the zone offset
+# printf reports FOR THAT INSTANT. Two passes: the offset can differ on the two
+# sides of the boundary (a DST change), and the second pass re-reads it on the
+# corrected side so the answer is right in either zone.
+_local_midnight_epoch() {
+  local base off secs e="" pass
+  base=$(_iso_to_epoch "${1}T00:00:00") || return 1
+  for pass in 1 2; do
+    printf -v off '%(%z)T' "${e:-$base}" 2>/dev/null
+    [[ $off =~ ^([+-])([0-9]{2})([0-9]{2})$ ]] || return 1
+    secs=$(( 10#${BASH_REMATCH[2]} * 3600 + 10#${BASH_REMATCH[3]} * 60 ))
+    [ "${BASH_REMATCH[1]}" = "-" ] && secs=$(( -secs ))
+    e=$(( base - secs ))
+  done
+  printf '%s' "$e"
+}
 
 # ── User configuration ────────────────────────────────────────────
 # <config-dir>/statusline-beauty/config.sh is PARSED, never sourced. A config
@@ -192,8 +308,11 @@ session_id=${F[20]}
 # Rewrite to the MSYS form (`C:\dir\file` -> `/c/dir/file`) in pure bash: cygpath
 # would be a fork per path per render, and this runs on every platform because
 # the pattern cannot match a POSIX path anyway.
+# Rewrites the variable NAMED by $1, in place. Indirect expansion plus
+# `printf -v` rather than a `local -n` nameref: namerefs are bash 4.3, and the
+# floor this script advertises (and enforces above) is 4.2.
 _to_posix_path() {
-  local -n _p=$1
+  local _p=${!1}
   case "$_p" in
     [A-Za-z]:[\\/]*)
       local _d=${_p%%:*}
@@ -203,6 +322,7 @@ _to_posix_path() {
       ;;
     *\\*) _p=${_p//\\//} ;;   # UNC or relative Windows path, no drive letter
   esac
+  printf -v "$1" '%s' "$_p"
 }
 _to_posix_path cwd
 _to_posix_path transcript
@@ -303,10 +423,10 @@ SLB_LOCK_STALE=120
 _take_lock() {
   local lock=$1
   mkdir "$lock" 2>/dev/null && return 0
-  local held; held=$(stat -c %Y "$lock" 2>/dev/null) || return 1
+  local held; held=$(stat "$_STAT_F" "$_FMT_MTIME" "$lock" 2>/dev/null) || return 1
   local now; printf -v now '%(%s)T' -1
   (( now - held > SLB_LOCK_STALE )) || return 1
-  [ "$(stat -c %Y "$lock" 2>/dev/null)" = "$held" ] || return 1
+  [ "$(stat "$_STAT_F" "$_FMT_MTIME" "$lock" 2>/dev/null)" = "$held" ] || return 1
   rmdir "$lock" 2>/dev/null || return 1
   mkdir "$lock" 2>/dev/null
 }
@@ -437,7 +557,7 @@ _sum_tokens_month() {
 session_tokens() {
   local tp=$1
   { [ -z "$tp" ] || [ ! -f "$tp" ]; } && { echo "0 0 0"; return; }
-  local sig; sig=$(stat -c '%s:%Y' "$tp" 2>/dev/null) || { _sum_tokens "$tp"; return; }
+  local sig; sig=$(stat "$_STAT_F" "$_FMT_SIG" "$tp" 2>/dev/null) || { _sum_tokens "$tp"; return; }
   local dir="$SLB_CACHE_DIR"
   local cache="$dir/${tp##*/}.cache"
   if [ -f "$cache" ]; then
@@ -501,7 +621,7 @@ last_agent_skill() {
   # transcript doesn't change until the Agent result returns). Collapse every
   # file's size:mtime into ONE space-free token (newlines → commas) so the
   # cache-read `read -r c_sig c_val` below still splits sig from value cleanly.
-  local sig; sig=$(stat -c '%s:%Y' "$tp" "${subs[@]}" 2>/dev/null | tr '\n' ',') \
+  local sig; sig=$(stat "$_STAT_F" "$_FMT_SIG" "$tp" "${subs[@]}" 2>/dev/null | tr '\n' ',') \
     || { _last_agent_skill "$tp" "${subs[@]}"; return; }
   local dir="$SLB_CACHE_DIR"
   local cache="$dir/${tp##*/}.agentskill.cache"
@@ -650,25 +770,39 @@ monthly_tokens() {
   local month_start; printf -v month_start '%(%Y-%m-01)T' -1
   # The month boundary the user means is LOCAL midnight, but transcript
   # timestamps are UTC — at +07:00 that is a seven-hour band of messages that
-  # would otherwise land in the wrong month. Two passes, because `date -u` puts
-  # BOTH parsing and printing in UTC while the input must be read as local
-  # time: parse local to epoch, then print that epoch as UTC. `-f -` takes
-  # several dates per call, so each direction is one fork, and only on a cache
-  # miss. If either fails (no GNU date) the bounds stay empty and jq counts the
-  # whole file, which is exactly the behaviour that shipped before.
+  # would otherwise land in the wrong month. Neither direction has a portable
+  # tool (`date -d`/`-f -` are GNU-only, `date -j -f` is BSD-only), so both are
+  # arithmetic now: local midnight to epoch, then that epoch back out as UTC.
+  # If either fails the bounds stay empty and jq counts the whole file, which is
+  # exactly the behaviour that shipped before.
+  local _y=$(( 10#${month_start:0:4} )) _m=$(( 10#${month_start:5:2} ))
+  local next_start
+  if (( _m == 12 )); then printf -v next_start '%04d-01-01' $(( _y + 1 ))
+  else                    printf -v next_start '%04d-%02d-01' "$_y" $(( _m + 1 ))
+  fi
   local since="" until="" _e1="" _e2=""
-  { read -r _e1; read -r _e2; } < <(
-      printf '%s\n%s\n' "$month_start" "$month_start + 1 month" |
-      date -f - +%s 2>/dev/null)
+  _e1=$(_local_midnight_epoch "$month_start")
+  _e2=$(_local_midnight_epoch "$next_start")
   if [ -n "$_e1" ] && [ -n "$_e2" ]; then
-    { read -r since; read -r until; } < <(
-        printf '@%s\n@%s\n' "$_e1" "$_e2" |
-        date -u -f - +'%Y-%m-%dT%H:%M:%S.000Z' 2>/dev/null)
+    since=$(_epoch_to_utc_iso "$_e1")
+    until=$(_epoch_to_utc_iso "$_e2")
   fi
 
+  # `find -printf` is GNU-only — on BSD find it is not just absent but a usage
+  # error, which emptied the whole listing and silently removed the 📅 segment.
+  # `-exec stat +` batches the same fields into one extra process instead.
   local listing
   listing=$(find "$proj_root" -mindepth 2 -name '*.jsonl' \
-              -newermt "$month_start" -printf '%p %s:%T@\n' 2>/dev/null)
+              -newermt "$month_start" -exec stat "$_STAT_F" "$_FMT_NAMESIG" {} + 2>/dev/null)
+  # -newermt is only a cheap pre-filter: the month is really bounded per message
+  # by $since/$until inside jq, so dropping it costs walk time, never accuracy.
+  # An empty listing on a find that does not understand the predicate is
+  # indistinguishable from an empty listing on a quiet month, so just retry
+  # without it rather than assuming which one happened.
+  if [ -z "$listing" ]; then
+    listing=$(find "$proj_root" -mindepth 2 -name '*.jsonl' \
+                -exec stat "$_STAT_F" "$_FMT_NAMESIG" {} + 2>/dev/null)
+  fi
   [ -z "$listing" ] && { echo "0 0 0 0 0 0"; return; }
 
   # Merge already-cached rows against the live listing with ONE cat + ONE awk
@@ -876,12 +1010,12 @@ make_bar() {
 time_until_reset() {
   local reset_ts=$1
   [ -z "$reset_ts" ] || [ "$reset_ts" = "null" ] && return
-  # accept epoch seconds; fall back to date -d for ISO strings
+  # accept epoch seconds; parse ISO strings ourselves (no GNU date)
   if ! [[ "$reset_ts" =~ ^[0-9]+$ ]]; then
-    reset_ts=$(date -d "$reset_ts" +%s 2>/dev/null) || return
+    reset_ts=$(_iso_to_epoch "$reset_ts") || return
   fi
   local now remaining rel clock
-  now=$(date +%s)
+  printf -v now '%(%s)T' -1
   remaining=$(( reset_ts - now ))
   if   (( remaining < 0 ));     then rel="now"
   elif (( remaining < 60 ));    then rel="${remaining}s"
@@ -889,7 +1023,9 @@ time_until_reset() {
   elif (( remaining < 86400 )); then rel="$(( remaining / 3600 ))h $(( (remaining % 3600) / 60 ))m"
   else                               rel="$(( remaining / 86400 ))d $(( (remaining % 86400) / 3600 ))h"
   fi
-  clock=$(date -d "@${reset_ts}" +"%I:%M %p" 2>/dev/null)
+  # printf '%(fmt)T' renders in the LOCAL zone, which is exactly what
+  # `date -d @N` did here — and it is a builtin, so the fork is gone too.
+  printf -v clock '%(%I:%M %p)T' "$reset_ts" 2>/dev/null
   [ -n "$clock" ] && echo "${rel} (${clock})" || echo "$rel"
 }
 
@@ -901,14 +1037,24 @@ time_until_reset() {
 is_latest_version() {
   local cur=$1
   [ -z "$cur" ] && return 1
-  local now; now=$(date +%s)
+  local now; printf -v now '%(%s)T' -1
   local c_ts="" c_ver=""
   [ -f "$LATEST_VERSION_CACHE" ] && read -r c_ts c_ver < "$LATEST_VERSION_CACHE" 2>/dev/null
   if [ -z "$c_ts" ] || (( now - c_ts > LATEST_VERSION_TTL )); then
     local lock="${LATEST_VERSION_CACHE}.lock"
     if mkdir -p -m 700 "$SLB_CACHE_ROOT" "$(dirname "$LATEST_VERSION_CACHE")" 2>/dev/null && _take_lock "$lock"; then
-      ( v=$(timeout 5 npm view @anthropic-ai/claude-code version 2>/dev/null)
-        [ -n "$v" ] && printf '%s %s\n' "$(date +%s)" "$v" > "$LATEST_VERSION_CACHE"
+      # macOS has no timeout(1) — it is coreutils' gtimeout, and only if Homebrew
+      # installed it — so `timeout 5 npm view` failed outright there and the (LTS)
+      # tag could never appear. Run npm in the background with a watchdog instead:
+      # portable, and it still bounds a registry call that hangs. The watchdog's
+      # own stdout goes to /dev/null so it never holds the $() pipe open past the
+      # kill; only npm's output reaches $v.
+      ( v=$( npm view @anthropic-ai/claude-code version 2>/dev/null & _np=$!
+             ( sleep 5; kill -TERM "$_np" 2>/dev/null ) >/dev/null 2>&1 & _wd=$!
+             wait "$_np" 2>/dev/null
+             kill -TERM "$_wd" 2>/dev/null )
+        printf -v _ts '%(%s)T' -1
+        [ -n "$v" ] && printf '%s %s\n' "$_ts" "$v" > "$LATEST_VERSION_CACHE"
         rmdir "$lock" 2>/dev/null
       ) >/dev/null 2>&1 & disown
     fi
@@ -1006,9 +1152,10 @@ if [ -n "$transcript" ] && [ -f "$transcript" ]; then
   turns=${turns:-0}
   first_ts=$(head -1 "$transcript" | grep -o '"timestamp":"[^"]*"' | cut -d'"' -f4)
   if [ -n "$first_ts" ]; then
-    start_epoch=$(date -d "$first_ts" +%s 2>/dev/null)
+    start_epoch=$(_iso_to_epoch "$first_ts" 2>/dev/null)
     if [ -n "$start_epoch" ]; then
-      elapsed=$(( $(date +%s) - start_epoch ))
+      printf -v _now_epoch '%(%s)T' -1
+      elapsed=$(( _now_epoch - start_epoch ))
       if   (( elapsed < 60 ));   then duration_str="${elapsed}s"
       elif (( elapsed < 3600 )); then duration_str="$(( elapsed / 60 ))m"
       else                            duration_str="$(( elapsed / 3600 ))h $(( (elapsed % 3600) / 60 ))m"
@@ -1016,7 +1163,7 @@ if [ -n "$transcript" ] && [ -f "$transcript" ]; then
     fi
   fi
 fi
-clock_str=$(date +%H:%M)
+printf -v clock_str '%(%H:%M)T' -1
 
 # ── System resources (1,2,3) ──────────────────────────────────────
 # Both blocks are wholly skipped when their switch is off, so a user who turns
@@ -1028,7 +1175,34 @@ cpu_load="" cpu_pct=""
 if (( SLB_SHOW_RAM )); then
   # RAM % = (total - available) / total — "available" already accounts for
   # reclaimable cache, so this matches what most monitoring tools call "used".
-  read -r ram_total_mb ram_avail_mb <<< "$(free -m 2>/dev/null | awk 'NR==2{print $2, $7}')"
+  ram_total_mb="" ram_avail_mb=""
+  if [ "$_SLB_OS" = macos ]; then
+    # macOS has neither free(1) nor /proc/meminfo. Total comes from sysctl;
+    # "available" is reconstructed from vm_stat's page counters, whose unit is
+    # printed in its own header and is 16K on Apple silicon but 4K on Intel —
+    # so parse the page size rather than assuming either.
+    #
+    # free + inactive + speculative + purgeable is the set the kernel can hand
+    # to a new allocation without swapping, which is the same thing MemAvailable
+    # means on Linux. Wired, active and compressed pages are the "used" side.
+    read -r ram_total_mb ram_avail_mb <<< "$( {
+      sysctl -n hw.memsize 2>/dev/null
+      vm_stat 2>/dev/null
+    } | awk '
+      NR == 1                       { total = $1 }
+      /page size of/                { for (i = 1; i <= NF; i++) if ($i == "of") ps = $(i+1) }
+      /^Pages free:/                { f = $3 }
+      /^Pages inactive:/            { n = $3 }
+      /^Pages speculative:/         { s = $3 }
+      /^Pages purgeable:/           { p = $3 }
+      END {
+        gsub(/\./, "", f); gsub(/\./, "", n); gsub(/\./, "", s); gsub(/\./, "", p)
+        if (total > 0 && ps > 0)
+          printf "%d %d", total/1048576, (f + n + s + p) * ps / 1048576
+      }')"
+  fi
+  [ -z "$ram_total_mb" ] &&
+    read -r ram_total_mb ram_avail_mb <<< "$(free -m 2>/dev/null | awk 'NR==2{print $2, $7}')"
   # Git Bash / MSYS ships no `free`, so the RAM bar (and the disk-free suffix
   # hanging off it) silently vanished on Windows. msys does emulate /proc/meminfo,
   # so fall back to that. It exposes MemTotal/MemFree but no MemAvailable — on
@@ -1053,6 +1227,11 @@ if (( SLB_SHOW_RAM )); then
   # "C:/Program Files/Git" — which shifts $4 off Available onto Used, a silently
   # WRONG number. The trailing columns are always size used avail use% mountpoint,
   # so index avail from the END: NF=6 on Linux -> $(NF-2)==$4, NF=7 on Windows.)
+  #
+  # -P pins that POSIX six-column layout, which is what makes indexing from the
+  # end safe: BSD df bolts three inode columns on by default, so on macOS a bare
+  # `df` puts $(NF-2) on `ifree` and reported a plausible but entirely wrong
+  # number. -k then gives 1K blocks everywhere; GNU's -BG is not portable.
   DISK_FREE_TTL=60
   _d_ts=""
   disk_cache="$sys_cache_dir/disk_free.cache"
@@ -1062,7 +1241,7 @@ if (( SLB_SHOW_RAM )); then
     (( _now_s - ${_d_ts:-0} >= DISK_FREE_TTL )) && disk_free=""
   fi
   if [ -z "$disk_free" ]; then
-    disk_free=$(df -BG / 2>/dev/null | awk 'NR==2{a=$(NF-2); gsub(/G/,"",a); printf "%sG",a}')
+    disk_free=$(df -Pk / 2>/dev/null | awk 'NR==2{printf "%.0fG", $(NF-2)/1048576}')
     [ -n "$disk_free" ] && { mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null
       printf '%s %s\n' "$_now_s" "$disk_free" > "$disk_cache" 2>/dev/null; }
   fi
@@ -1075,7 +1254,10 @@ if (( SLB_SHOW_CPU )); then
   nproc_cache="$sys_cache_dir/nproc.cache"
   [ -r "$nproc_cache" ] && read -r cpu_cores < "$nproc_cache"
   if ! [[ "$cpu_cores" =~ ^[0-9]+$ ]] || (( cpu_cores < 1 )); then
-    cpu_cores=$(nproc 2>/dev/null); cpu_cores=${cpu_cores:-1}
+    # nproc is coreutils, so it is absent on macOS; hw.ncpu is the BSD spelling
+    # and getconf is the POSIX one. Whichever answers first wins.
+    cpu_cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
+    [[ "$cpu_cores" =~ ^[0-9]+$ ]] || cpu_cores=1
     mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null && printf '%s\n' "$cpu_cores" > "$nproc_cache" 2>/dev/null
   fi
   # CPU % = 1-minute load average relative to core count (can exceed 100 when
@@ -1083,7 +1265,14 @@ if (( SLB_SHOW_CPU )); then
   # AND compute the % in ONE awk (was `cut` + a second awk), emitting the raw
   # load too for the "· load N" suffix. Git Bash has no /proc/loadavg, so the CPU
   # bar is simply absent there.
-  if [ -r /proc/loadavg ]; then
+  # Platform first, then the file test — same order as the RAM block above, and
+  # it keeps the macOS path exercisable on a Linux box that does have /proc.
+  if [ "$_SLB_OS" = macos ]; then
+    # macOS has no /proc at all. `sysctl -n vm.loadavg` prints "{ 1.15 1.30 1.44 }";
+    # stripping the braces re-splits $0, so $1 becomes the 1-minute figure.
+    read -r cpu_load cpu_pct <<< "$(sysctl -n vm.loadavg 2>/dev/null |
+      awk -v c="$cpu_cores" '{gsub(/[{}]/, ""); printf "%s %d", $1, $1*100/c; exit}')"
+  elif [ -r /proc/loadavg ]; then
     read -r cpu_load cpu_pct <<< "$(awk -v c="$cpu_cores" '{printf "%s %d", $1, $1*100/c; exit}' /proc/loadavg)"
   fi
 fi
@@ -1160,13 +1349,21 @@ fi
 # fast mode indicator
 [ "$fast_mode" = "true" ] && hp+=("$(printf "${C_MODEL}🚀 fast${C_RESET}")")
 
-# effort + thinking — 🧠 label; "xhigh" displays as "Ultracode". xhigh/max
-# render the label (with " (Thinking)" suffix) in the rainbow() gradient,
-# icon stays plain C_EFRT — same style as the Opus model name. Other levels
-# (low/medium/high) keep the original plain C_EFRT rendering unchanged.
+# effort + thinking — 🧠 label, shown verbatim.
+#
+# This used to relabel "xhigh" as "Ultracode", which was wrong. Ultracode is a
+# separate `/effort ultracode` option — "xhigh + dynamic workflow orchestration",
+# session-only — so every xhigh session was mislabelled as one that fans out
+# subagents. It cannot be shown correctly either: `effort.level` is documented as
+# `low | medium | high | xhigh | max`, ultracode is not one of its values, and
+# selecting it simply reports xhigh. Nothing in the payload distinguishes them,
+# so print the level Claude Code actually reports and claim nothing more.
+#
+# xhigh/max still render the label (with the " (Thinking)" suffix) in the
+# rainbow() gradient, icon stays plain C_EFRT — same style as the Opus model
+# name. low/medium/high keep the plain C_EFRT rendering.
 if [ -n "$effort" ]; then
   efrt_label="$effort"
-  [ "$effort" = "xhigh" ] && efrt_label="Ultracode"
   [ "$thinking" = "true" ] && efrt_label="$efrt_label (Thinking)"
   if [ "$effort" = "xhigh" ] || [ "$effort" = "max" ]; then
     hp+=("$(printf "${C_EFRT}🧠 ${C_RESET}")$(rainbow "$efrt_label")")
@@ -1258,7 +1455,7 @@ printf '%s\n' "$header"
 # figures stand out from the plain-white turn/cache/avg stats.
 hp2=()
 [ -n "$cost_fmt" ]      && hp2+=("$(printf "${C_COST_HL}🌿 \$%s${C_RESET}" "$cost_fmt")")
-[ -n "$month_fmt" ]     && hp2+=("$(printf "${C_MONTH_HL}📅 ~\$%s/mo · %s tok%s${C_RESET}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")")
+[ -n "$month_fmt" ]     && hp2+=("$(printf "${C_MONTH_HL}📅 ~\$%s/mo · %stok/mo%s${C_RESET}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")")
 (( turns > 0 ))         && hp2+=("$(printf "${C_BAR}♻️ %d turns${C_RESET}" "$turns")")
 [ -n "$cost_per_turn" ] && hp2+=("$(printf "${C_BAR}💲 %s/turn${C_RESET}" "$cost_per_turn")")
 [ -n "$cache_rate" ]    && hp2+=("$(printf "${C_BAR}📀 cache HR %d%%${C_RESET}" "$cache_rate")")
