@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.1] - 2026-08-12
 
 ### Added
 - **Troubleshooting: "I installed/updated but the bar still shows the old
@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a timer, so it recomputes exactly when a transcript grows. The section also
   records where the cache lives, since the previous advice to "restart Claude
   Code" sent people down the wrong path.
+
+### Fixed
+- **macOS: month-to-date token figure was pinned at 0.** BSD awk (the macOS
+  system awk) hard-errors on a literal newline inside a `-v` value
+  ("newline in string"), and the error was swallowed by `2>/dev/null` — so the
+  cache merge in `monthly_tokens()` silently produced nothing, every render
+  summed the month to zero, and the all-zero result was memoized and baked into
+  the `tokens-base` baseline. Newlines in the listing are now escaped as `\n`
+  before the `-v` assignment; POSIX requires `-v` values to undergo escape
+  processing, so both gawk and BSD awk rebuild the same multi-line string.
+  GNU awk accepts literal newlines, which is why Linux never showed this.
+  After updating, delete `<config-dir>/statusline-beauty/cost/<YYYY-MM>.tokens-base`
+  once if it was captured as all zeros — the next warm scan rewrites it correctly.
 
 ## [1.1.0] - 2026-07-28
 

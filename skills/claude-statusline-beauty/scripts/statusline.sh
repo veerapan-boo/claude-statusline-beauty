@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.1.0
+# statusline-beauty-version: 1.1.1
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -816,7 +816,12 @@ monthly_tokens() {
   compgen -G "$MONTHLY_CACHE_DIR"/*.cache > /dev/null 2>&1 && cache_files=("$MONTHLY_CACHE_DIR"/*.cache)
 
   local merged
-  merged=$(awk -v listing="$listing" '
+  # BSD awk (macOS system awk) hard-errors on a literal newline inside a `-v`
+  # value ("newline in string"), which silently emptied the merge and pinned
+  # the month at 0 tokens. Escape newlines as \n — POSIX requires -v values to
+  # undergo escape processing, so both awks rebuild the same multi-line string.
+  local listing_esc=${listing//$'\n'/\\n}
+  merged=$(awk -v listing="$listing_esc" '
     BEGIN {
       n = split(listing, L, "\n")
       for (i = 1; i <= n; i++) {
