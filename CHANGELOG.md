@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-08-18
+
+### Fixed
+- **`manage.sh update` reported "already up to date" against a stale cached
+  release check**, up to 6 hours old — a `status`/`install` run earlier in
+  that window would freeze `update`'s idea of "latest" until the cache
+  expired, even after a new release had actually been published. `update`
+  now always hits the GitHub API live and never reads the cache; `status`
+  and `install` are unchanged and still cache for up to 6h, since they run
+  far more often and don't carry the same expectation of freshness.
+  `--force` keeps its other meaning: reinstalling even when already current.
+
 ## [1.2.2] - 2026-08-18
 
 ### Fixed

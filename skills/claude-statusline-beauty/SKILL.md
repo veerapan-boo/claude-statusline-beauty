@@ -1,7 +1,7 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.2.2
+version: 1.2.3
 author: veerapan-boo
 license: MIT
 tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
@@ -132,7 +132,7 @@ call, not yours.
 |---|---|
 | *(none)* | `status --json`, then install or update as above |
 | `status` | `manage.sh status` |
-| `update` | `manage.sh update` (add `--force` to bypass the 6h check cache) |
+| `update` | `manage.sh update` — always checks GitHub live, never a cached result. Add `--force` to reinstall even when already on the latest version |
 | `doctor` | `manage.sh doctor` — dependency and environment report |
 | `uninstall` | `manage.sh uninstall` (add `--purge` to delete the install dir too) |
 | `demo` | `manage.sh render-demo` — render from a fixture without restarting |

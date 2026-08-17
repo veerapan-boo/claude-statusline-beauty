@@ -737,8 +737,12 @@ cmd_update() {
     err "not installed yet — run: manage.sh install"
     return 1
   fi
-  local use_cache=1; [ "$FORCE" = 1 ] && use_cache=0
-  if ! resolve_latest "$use_cache"; then
+  # "update" means "check right now" — always hit the API live rather than
+  # trusting a check made up to 6h ago (the RELEASE_TTL cache is for
+  # status/install, which run far more often and don't carry the same
+  # expectation of freshness). --force keeps its other meaning below:
+  # reinstalling even when already on the latest version.
+  if ! resolve_latest 0; then
     warn "could not check for updates: ${LATEST_NOTE:-unknown reason}"
     say  "  Installed version $INSTALLED_VERSION left untouched."
     return 0
