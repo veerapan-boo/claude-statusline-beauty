@@ -449,7 +449,39 @@ SLB_SHOW_FOOTER=1
 
 # Width of the usage bars, in characters. Clamped to 10-60.
 SLB_BAR_WIDTH=25
+
+# Lite mode: gray text + purple model name, fewer segments, no footer.
+# Use `manage.sh lite` / `manage.sh normal` to flip this rather than editing
+# it by hand — see the "lite mode" section of the README.
+SLB_LITE_MODE=0
 CFG
+}
+
+# Rewrite a single KEY=VALUE line in config.sh in place, preserving every
+# comment and every other key. awk over the file rather than `sed -i`: BSD and
+# GNU sed take incompatible -i syntax, which is exactly the portability trap
+# this repo works around everywhere else (see the GNU/BSD shims near the top
+# of statusline.sh). Temp file + mv -f keeps a crash mid-write from truncating
+# a config a concurrent render might be reading.
+set_config_value() {
+  local key=$1 value=$2
+  [ -f "$CONFIG_FILE" ] || { err "not installed — run 'manage.sh install' first"; return 1; }
+  awk -v k="$key" -v v="$value" '
+    $0 ~ "^" k "=" { print k "=" v; done=1; next }
+    { print }
+    END { if (!done) print k "=" v }
+  ' "$CONFIG_FILE" > "$CONFIG_FILE.tmp.$$" && mv -f "$CONFIG_FILE.tmp.$$" "$CONFIG_FILE"
+}
+
+cmd_lite() {
+  set_config_value SLB_LITE_MODE 1 || return 1
+  ok "lite mode enabled — takes effect on the next render"
+  say "  ${D}back to normal any time: manage.sh normal${N}"
+}
+
+cmd_normal() {
+  set_config_value SLB_LITE_MODE 0 || return 1
+  ok "normal mode enabled — takes effect on the next render"
 }
 
 prune_backups() {
@@ -812,6 +844,8 @@ manage.sh — install, update and inspect statusline-beauty.
   manage.sh doctor               dependency + environment report
   manage.sh uninstall [--purge]  restore the previous statusLine setting
   manage.sh render-demo          render the status line from a fixture
+  manage.sh lite                 switch to the minimal, low-color render
+  manage.sh normal               switch back to the full render
 
   --force             overwrite a conflicting statusLine / bypass the check cache
   --no-update-check   install the bundled copy without contacting GitHub
@@ -825,7 +859,7 @@ USAGE
 CMD=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    status|install|update|doctor|uninstall|render-demo) [ -z "$CMD" ] && CMD="$1" ;;
+    status|install|update|doctor|uninstall|render-demo|lite|normal) [ -z "$CMD" ] && CMD="$1" ;;
     --json)             JSON_OUT=1 ;;
     --force|-f)         FORCE=1 ;;
     --no-update-check)  DO_UPDATE_CHECK=0 ;;
@@ -844,5 +878,7 @@ case "$CMD" in
   doctor)      cmd_doctor ;;
   uninstall)   cmd_uninstall ;;
   render-demo) cmd_render_demo ;;
+  lite)        cmd_lite ;;
+  normal)      cmd_normal ;;
   *)           usage; exit 2 ;;
 esac

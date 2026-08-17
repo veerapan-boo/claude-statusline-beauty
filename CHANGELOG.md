@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-17
+
+### Added
+- **Lite mode (`SLB_LITE_MODE`).** A minimal-decoration, three-line render:
+  Line 1 is `session_id` (first 8 chars) + folder + branch/worktree + dirty
+  file count and lines-changed + last-commit age (ahead/behind dropped —
+  `📡 a9ccdf31  💻 my-project  |  🌿 main  |  ± 7 files  +1569 -132  |  6d`);
+  Line 2 is model + effort/thinking + plain-text skills/agents/mcp/tools
+  counters (no emoji on the counters); Line 3 is session cost + month-to-date
+  + turns + cost/turn (`📀 cache HR`, `📈 avg/turn` and the per-turn `cw:`
+  cache-write figure stay dropped). Every color collapses to a brighter
+  256-color gray (`38;5;250`, not the darker `C_DIM` normal mode uses)
+  except the model name, which keeps the purple normal mode reserves for
+  Sonnet (no rainbow gradient anywhere, ⚡️ marks every model). The ctx/5h/week
+  circles collapse to a two-state green (under 75%) / white (75%+) pair, with
+  🌎/🧩 markers added to the ctx line's in/out token breakdown. CPU and RAM
+  bars are not rendered at all in lite mode. The version/session_id footer
+  (plus its separating blank line) is omitted entirely, so output ends right
+  after the last bar. Normal mode is unchanged — verified byte-for-byte
+  identical against the same fixture before and after this change. Switch
+  with `manage.sh lite` / `manage.sh normal`, or set `SLB_LITE_MODE=1` in
+  `config.sh` directly.
+
 ## [1.1.1] - 2026-08-12
 
 ### Added

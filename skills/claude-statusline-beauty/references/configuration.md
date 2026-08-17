@@ -42,6 +42,7 @@ SLB_SHOW_MONTHLY=0 bash ~/.claude/statusline-beauty/statusline.sh < fixture.json
 | `SLB_CHECK_LATEST` | `1` | drops the `(LTS)` tag next to the version | a background `npm view` at most every 6 hours — **the only network call the status line makes** |
 | `SLB_SHOW_FOOTER` | `1` | drops the version + `session_id` footer line | none |
 | `SLB_BAR_WIDTH` | `25` | — | width of every usage bar, clamped to 10–60 |
+| `SLB_LITE_MODE` | `0` | — | `1` switches to the minimal, low-color render (see below); costs nothing extra — it only changes what already-computed segments print |
 
 Each switch gates the *work*, not just the display: turning a line off stops the
 underlying commands from running at all.
@@ -76,6 +77,23 @@ SLB_BAR_WIDTH=14
 ```sh
 SLB_SHOW_CPU=0
 ```
+
+## Lite mode
+
+`SLB_LITE_MODE=1` (or `manage.sh lite`) switches to a minimal render:
+
+- Every color collapses to gray, except the model name, which keeps the purple
+  normal mode reserves for Sonnet — no rainbow gradient anywhere, on any model.
+- The `📀 cache HR` and `📈 avg/turn` segments are dropped from the stats line.
+- The skills/agents/mcp/tools counters and the `📅` month-to-date prefix lose
+  their emoji (the data stays, just as plain text).
+- The ctx/5h/week circles collapse to two states: 🟢 under 75%, ⚪ at 75%+.
+  The CPU/RAM bars keep the normal four-state circle regardless of this switch.
+- The footer (version + `session_id`) and its separating blank line are
+  omitted entirely — output ends right after the last usage bar.
+
+Switch back with `SLB_LITE_MODE=0` or `manage.sh normal`. Everything else in
+this file (which segments show, bar width) still applies on top of lite mode.
 
 ## What is never configurable
 

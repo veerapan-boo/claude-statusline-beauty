@@ -1,7 +1,7 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.1.0
+version: 1.2.0
 author: veerapan-boo
 license: MIT
 tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
@@ -124,6 +124,8 @@ call, not yours.
 | `doctor` | `manage.sh doctor` — dependency and environment report |
 | `uninstall` | `manage.sh uninstall` (add `--purge` to delete the install dir too) |
 | `demo` | `manage.sh render-demo` — render from a fixture without restarting |
+| `lite` | `manage.sh lite` — switch to the minimal, low-color render |
+| `normal` | `manage.sh normal` — switch back to the full render |
 
 ## Changing a setting
 
@@ -154,6 +156,7 @@ Map the request onto a key:
 | hide the git line | `SLB_SHOW_GIT=0` |
 | hide the skills / agents / mcp / tools counters | `SLB_SHOW_TOOL_COUNTS=0` |
 | bars are too wide / my terminal is narrow | `SLB_BAR_WIDTH=14` (clamped 10–60) |
+| minimal colors, fewer segments, no footer | `manage.sh lite` (sets `SLB_LITE_MODE=1`) |
 
 The context / 5h / weekly bars and the model + directory header are **not**
 configurable. If the user asks to remove those, say so rather than inventing a

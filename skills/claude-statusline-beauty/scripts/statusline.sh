@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.1.1
+# statusline-beauty-version: 1.2.0
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -22,6 +22,23 @@
 #     Claude Code v2.1.220 (LTS)  ·  session_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 #
 # Every line can be switched off — see config.sh / references/configuration.md.
+#
+# SLB_LITE_MODE=1 switches to a different three-line layout, not just a
+# recolored normal mode:
+#
+#   📡 40f74946 💻 my-project  |  🌿 (worktree) llm-translate  |  ± 7 files  |  6d
+#   ⚡️ Sonnet 5 · 🧠 low (Thinking) | 5 skills | 2 agents | 4 mcp | 87 tools
+#   🌐 $5.22  |  ~$1562.29/mo · 1664.8Mtok/mo | 30 turns | $0.174/turn
+#   🟢 ctx  [███░░░░░░░░░░░░░░░░░░░░░░]  12% · 120.4k/1M 🌎 in:33 🧩 out:11.8k
+#   🟢 5h   [█░░░░░░░░░░░░░░░░░░░░░░░░]   4% · resets 1h 39m (10:30 PM)
+#   ⚪ week [██████████████████████░░░]  89% · resets 8h 9m (05:00 AM)
+#
+# Gray text everywhere except a purple model name, no rainbow, no
+# ahead/behind or lines-changed on line 1, cache-HR/avg-per-turn dropped, the
+# tool counters lose their emoji, ctx/5h/week circles collapse to a
+# green/white pair with 🌎/🧩 markers on the ctx line's token breakdown, CPU
+# and RAM bars are not shown at all, and the footer (+ its spacer line) is
+# omitted entirely.
 
 # ── Platform ──────────────────────────────────────────────────────
 # ONE uname call, reused by the bash shim, the jq shim, and every GNU-vs-BSD
@@ -206,7 +223,7 @@ if [ -r "$_slb_cfg" ]; then
     # Whitelist as a padded string so the list stays on one line — a backslash
     # continuation inside a case pattern list would smuggle blanks into the
     # patterns and silently stop matching.
-    case " SLB_SHOW_MONTHLY SLB_SHOW_GIT SLB_SHOW_TOOL_COUNTS SLB_SHOW_CPU SLB_SHOW_RAM SLB_CHECK_LATEST SLB_SHOW_FOOTER SLB_BAR_WIDTH " in
+    case " SLB_SHOW_MONTHLY SLB_SHOW_GIT SLB_SHOW_TOOL_COUNTS SLB_SHOW_CPU SLB_SHOW_RAM SLB_CHECK_LATEST SLB_SHOW_FOOTER SLB_BAR_WIDTH SLB_LITE_MODE " in
       *" $_k "*) ;;
       *) continue ;;                                # unknown key — ignore
     esac
@@ -235,6 +252,7 @@ _slb_norm SLB_SHOW_CPU        1   # CPU bar
 _slb_norm SLB_SHOW_RAM        1   # RAM bar (+ disk free)
 _slb_norm SLB_CHECK_LATEST    1   # "(LTS)" tag — makes a background `npm view` network call
 _slb_norm SLB_SHOW_FOOTER     1   # version + session_id footer (turn off when screen sharing)
+_slb_norm SLB_LITE_MODE       0   # minimal render: gray text + purple model name, fewer segments, no footer
 
 # Bar width is a number, not a switch: reject anything non-numeric, then clamp to
 # a range that still renders sensibly.
@@ -353,6 +371,22 @@ C_COST='\033[0;37m'    # white  — session cost
 C_COST_HL='\033[1;38;5;220m'  # bold gold   — session cost, made to stand out
 C_MONTH_HL='\033[1;38;5;39m'  # bold azure blue — month-to-date cost/tokens
 C_EFRT='\033[0;37m'    # white  — effort / thinking
+
+# Lite mode: every color collapses to plain gray except the model name, which
+# keeps the purple that normal mode reserves for Sonnet — no rainbow, no
+# per-segment color coding. Only reassigning the variables (not the logic
+# below) keeps normal mode byte-for-byte unaffected by this block.
+if (( SLB_LITE_MODE )); then
+  # C_DIM (bright-black, \033[0;90m) reads too dark/washed-out for body text —
+  # 256-color light gray instead, kept separate from C_DIM so normal mode
+  # (which still uses C_DIM for its separator/default-dirty-color) is untouched.
+  C_DIM='\033[38;5;250m'
+  C_MODEL="$C_MODEL_SONNET"
+  C_PATH="$C_DIM"; C_GIT="$C_DIM"; C_VIM="$C_DIM"; C_INFO="$C_DIM"
+  C_BAR="$C_DIM"; C_YEL="$C_DIM"; C_ADD="$C_DIM"; C_DEL="$C_DIM"
+  C_RED="$C_DIM"; C_WARN="$C_DIM"; C_VERLINE="$C_DIM"; C_LTS="$C_DIM"
+  C_COST="$C_DIM"; C_COST_HL="$C_DIM"; C_MONTH_HL="$C_DIM"; C_EFRT="$C_DIM"
+fi
 
 BAR_WIDTH=$SLB_BAR_WIDTH
 
@@ -985,6 +1019,14 @@ pct_circle() {
   fi
 }
 
+# Lite mode's ctx/5h/week circle: just two states, green under the 75% warn
+# threshold and white at or above it. CPU/RAM keep pct_circle() even in lite
+# mode — this is a deliberate ctx/5h/week-only swap, not a global replacement.
+pct_circle_lite() {
+  local p=$1
+  if (( p >= 75 )); then printf '⚪'; else printf '🟢'; fi
+}
+
 # Pick bar color by usage: <75 white, 75-99 yellow, 100 red
 bar_color() {
   local p=$1
@@ -1069,11 +1111,11 @@ is_latest_version() {
 
 # Emit one bar line:  🟢 label  [bar] NN%  · resets <t>  <info>  <suffix>
 emit_bar() {
-  local label=$1 raw_pct=$2 reset_ts=$3 info=$4 suffix=$5
+  local label=$1 raw_pct=$2 reset_ts=$3 info=$4 suffix=$5 circle_fn=${6:-pct_circle}
   local p; p=$(to_int_pct "$raw_pct")
   local c; c=$(bar_color "$p")
   local bar; bar=$(make_bar "$p")
-  local circle; circle=$(pct_circle "$p")
+  local circle; circle=$("$circle_fn" "$p")
   printf "  %s \033[0;37m%-4s${C_RESET} ${c}[%s] %3d%%${C_RESET}" "$circle" "$label" "$bar" "$p"
   local reset_str; reset_str=$(time_until_reset "$reset_ts")
   [ -n "$reset_str" ] && printf " ${C_INFO}· resets %s${C_RESET}" "$reset_str"
@@ -1319,8 +1361,15 @@ if (( SLB_SHOW_MONTHLY )); then
 fi
 
 # ── Line 1: header — parts collected, then joined with " | " ──────
+# Lite mode assembles its own line1/line2/line3 further below instead of
+# populating hp[] — the field-to-line mapping is different enough (session id
+# + folder + git merged onto one line, model + effort + counts onto another)
+# that patching the shared hp[] array line-by-line would be harder to follow
+# than two separate assembly paths.
 hp=()
-if [[ "$model" == *[Oo]pus* ]]; then
+if (( SLB_LITE_MODE )); then
+  :
+elif [[ "$model" == *[Oo]pus* ]]; then
   # Opus gets a dragon icon ✨ + a rainbow name 🌈
   hp+=("$(printf "${C_MODEL}✨ ${C_RESET}")$(rainbow "$model")")
 elif [[ "$model" == *[Ss]onnet* ]]; then
@@ -1328,12 +1377,13 @@ elif [[ "$model" == *[Ss]onnet* ]]; then
 else
   hp+=("$(printf "${C_MODEL}☄️ %s${C_RESET}" "$model")")
 fi
-[ -n "$short_cwd" ] && hp+=("$(printf "${C_PATH}📁 %s${C_RESET}" "$short_cwd")")
+(( ! SLB_LITE_MODE )) && [ -n "$short_cwd" ] && hp+=("$(printf "${C_PATH}📁 %s${C_RESET}" "$short_cwd")")
 
 # lines changed — session edit stats, appended straight onto the path entry
-# (not a new hp[] item) so no " | " separator is inserted before it.
+# (not a new hp[] item) so no " | " separator is inserted before it. Not
+# shown in lite mode's line1 — there's no room next to the git fields.
 la=${lines_add:-0}; ld=${lines_del:-0}
-if (( la > 0 || ld > 0 )); then
+if (( ! SLB_LITE_MODE )) && (( la > 0 || ld > 0 )); then
   last_idx=$(( ${#hp[@]} - 1 ))
   hp[$last_idx]+=" $(printf "${C_ADD}+%s${C_RESET} ${C_DEL}-%s${C_RESET}" "$la" "$ld")"
 fi
@@ -1351,8 +1401,8 @@ if (( SLB_SHOW_GIT )); then
   fi
 fi
 
-# fast mode indicator
-[ "$fast_mode" = "true" ] && hp+=("$(printf "${C_MODEL}🚀 fast${C_RESET}")")
+# fast mode indicator — not in the lite-mode target layout
+(( ! SLB_LITE_MODE )) && [ "$fast_mode" = "true" ] && hp+=("$(printf "${C_MODEL}🚀 fast${C_RESET}")")
 
 # effort + thinking — 🧠 label, shown verbatim.
 #
@@ -1370,7 +1420,9 @@ fi
 if [ -n "$effort" ]; then
   efrt_label="$effort"
   [ "$thinking" = "true" ] && efrt_label="$efrt_label (Thinking)"
-  if [ "$effort" = "xhigh" ] || [ "$effort" = "max" ]; then
+  if (( SLB_LITE_MODE )); then
+    :   # appended onto lite mode's own line2 further below, not hp[]
+  elif { [ "$effort" = "xhigh" ] || [ "$effort" = "max" ]; }; then
     hp+=("$(printf "${C_EFRT}🧠 ${C_RESET}")$(rainbow "$efrt_label")")
   else
     hp+=("$(printf "${C_EFRT}🧠 %s${C_RESET}" "$efrt_label")")
@@ -1389,7 +1441,7 @@ if (( SLB_SHOW_TOOL_COUNTS )); then
     read -r as_type as_name skill_n agent_n mcp_n tool_n <<< "$(last_agent_skill "$transcript")"
   fi
 fi
-if [ "$as_type" != "none" ] || (( tool_n > 0 || mcp_n > 0 )); then
+if (( ! SLB_LITE_MODE )) && { [ "$as_type" != "none" ] || (( tool_n > 0 || mcp_n > 0 )); }; then
   hp+=("$(printf "${C_BAR}🧩 %s skills${C_RESET}" "$skill_n")")
   hp+=("$(printf "${C_BAR}🤖 %s agents${C_RESET}" "$agent_n")")
   hp+=("$(printf "${C_BAR}🔌 %s mcp${C_RESET}" "$mcp_n")")
@@ -1406,7 +1458,7 @@ fi
 # Only built (and only printed) when $cwd is inside a git repo — no git repo
 # means no Line 3 at all, not even a placeholder.
 hp_git=()
-if [ -n "$git_branch" ]; then
+if (( ! SLB_LITE_MODE )) && [ -n "$git_branch" ]; then
   if [ -n "$worktree" ]; then
     hp_git+=("$(printf "🌐 ${C_ADD}(worktree)${C_RESET} ${C_GIT}%s${C_RESET}" "$git_branch")")
   else
@@ -1429,12 +1481,10 @@ if [ -n "$git_branch" ]; then
   [ -n "$git_last" ] && hp_git+=("$(printf "${C_INFO}%s${C_RESET}" "$git_last")")
 fi
 
-[ -n "$vim_mode" ] && hp+=("$(printf "${C_VIM}[%s]${C_RESET}" "$vim_mode")")
+(( ! SLB_LITE_MODE )) && [ -n "$vim_mode" ] && hp+=("$(printf "${C_VIM}[%s]${C_RESET}" "$vim_mode")")
 
 # join parts with a dim pipe separator:  model | path | git | …
 sep="$(printf "  ${C_DIM}|${C_RESET}  ")"
-header="${hp[0]}"
-for (( i = 1; i < ${#hp[@]}; i++ )); do header="${header}${sep}${hp[$i]}"; done
 
 # session analytics (15,16,17) — uses sum_in/sum_out/sum_cache from early call
 cost_per_turn=""
@@ -1452,30 +1502,86 @@ if (( turns > 0 && total_session_toks > 0 )); then
   avg_tok=$(humanize_tokens $(( total_session_toks / turns )))
 fi
 
-printf '%s\n' "$header"
+if (( SLB_LITE_MODE )); then
+  # dotsep: the lite-mode separator between trailing same-kind stat fields
+  # (turns, cost/turn) — single-spaced, matching the "· resets"/"· info"
+  # style emit_bar already uses. sep (pipe) still marks the boundary
+  # between distinct field GROUPS (e.g. git identity vs. its stats,
+  # effort vs. the counter group, cost vs. month).
+  dotsep="$(printf " ${C_DIM}·${C_RESET} ")"
 
-# ── Line 2: combined stats ──────────────────────────────────────────
-# order: total cost | month | turns | cost/turn | cache HR% | avg tok/turn
-# 🌿/📅 lead the line in bold vivid colors (gold/orange) so the two cost
-# figures stand out from the plain-white turn/cache/avg stats.
-hp2=()
-[ -n "$cost_fmt" ]      && hp2+=("$(printf "${C_COST_HL}🌿 \$%s${C_RESET}" "$cost_fmt")")
-[ -n "$month_fmt" ]     && hp2+=("$(printf "${C_MONTH_HL}📅 ~\$%s/mo · %stok/mo%s${C_RESET}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")")
-(( turns > 0 ))         && hp2+=("$(printf "${C_BAR}♻️ %d turns${C_RESET}" "$turns")")
-[ -n "$cost_per_turn" ] && hp2+=("$(printf "${C_BAR}💲 %s/turn${C_RESET}" "$cost_per_turn")")
-[ -n "$cache_rate" ]    && hp2+=("$(printf "${C_BAR}📀 cache HR %d%%${C_RESET}" "$cache_rate")")
-[ -n "$avg_tok" ]       && hp2+=("$(printf "${C_BAR}📈 avg ~%s/turn${C_RESET}" "$avg_tok")")
-if (( ${#hp2[@]} > 0 )); then
-  header2="${hp2[0]}"
-  for (( i = 1; i < ${#hp2[@]}; i++ )); do header2="${header2}${sep}${hp2[$i]}"; done
-  printf '%s\n' "$header2"
-fi
+  # ── Lite Line 1: session id, folder, git branch/dirty/changed/last —
+  # no ahead/behind; session id + folder join with a plain space (they're
+  # one "where am I" unit), branch is a new field (sep), dirty-files and
+  # the +/-lines-changed are one "what changed" unit (plain space), and
+  # last-commit age is its own trailing field (dotsep).
+  line1="$(printf "${C_DIM}📡 %s${C_RESET}" "${session_id:0:8}")"
+  [ -n "$short_cwd" ] && line1="${line1}  $(printf "${C_DIM}💻 %s${C_RESET}" "$short_cwd")"
+  if [ -n "$git_branch" ]; then
+    if [ -n "$worktree" ]; then
+      line1="${line1}${sep}$(printf "${C_DIM}🌿 (worktree) %s${C_RESET}" "$git_branch")"
+    else
+      line1="${line1}${sep}$(printf "${C_DIM}🌿 %s${C_RESET}" "$git_branch")"
+    fi
+    changed=""
+    (( git_dirty > 0 )) && changed="$(printf "${C_DIM}± %d files${C_RESET}" "$git_dirty")"
+    if (( la > 0 || ld > 0 )); then
+      lines_fmt="$(printf "${C_ADD}+%s${C_RESET} ${C_DEL}-%s${C_RESET}" "$la" "$ld")"
+      changed="${changed:+$changed  }$lines_fmt"
+    fi
+    [ -n "$changed" ] && line1="${line1}${sep}${changed}"
+    [ -n "$git_last" ]  && line1="${line1}${sep}$(printf "${C_DIM}%s${C_RESET}" "$git_last")"
+  fi
+  printf '%s\n' "$line1"
 
-# ── Line 3: git info (branch / ahead-behind / dirty / last commit) ─
-if (( ${#hp_git[@]} > 0 )); then
-  header_git="${hp_git[0]}"
-  for (( i = 1; i < ${#hp_git[@]}; i++ )); do header_git="${header_git}${sep}${hp_git[$i]}"; done
-  printf '%s\n' "$header_git"
+  # ── Lite Line 2: model + effort/thinking, then the (emoji-free) counts ─
+  line2="$(printf "${C_MODEL}⚡️ %s${C_RESET}" "$model")"
+  [ -n "$effort" ] && line2="${line2} · $(printf "${C_DIM}🧠 %s${C_RESET}" "$efrt_label")"
+  if [ "$as_type" != "none" ] || (( tool_n > 0 || mcp_n > 0 )); then
+    line2="${line2}${sep}$(printf "${C_DIM}%s skills${C_RESET}" "$skill_n")"
+    line2="${line2} | $(printf "${C_DIM}%s agents${C_RESET}" "$agent_n")"
+    line2="${line2} | $(printf "${C_DIM}%s mcp${C_RESET}" "$mcp_n")"
+    line2="${line2} | $(printf "${C_DIM}%s tools${C_RESET}" "$tool_n")"
+  fi
+  printf '%s\n' "$line2"
+
+  # ── Lite Line 3: cost | month · turns · cost / turn — cache HR and
+  # avg/turn stay dropped, same as before.
+  if [ -n "$cost_fmt" ]; then
+    line3="$(printf "${C_DIM}🌐 \$%s${C_RESET}" "$cost_fmt")"
+    [ -n "$month_fmt" ]     && line3="${line3}${sep}$(printf "${C_DIM}~\$%s/mo · %stok/mo%s${C_RESET}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")"
+    (( turns > 0 ))         && line3="${line3}${dotsep}$(printf "${C_DIM}%d turns${C_RESET}" "$turns")"
+    [ -n "$cost_per_turn" ] && line3="${line3}${dotsep}$(printf "${C_DIM}%s / turn${C_RESET}" "$cost_per_turn")"
+    printf '%s\n' "$line3"
+  fi
+else
+  header="${hp[0]}"
+  for (( i = 1; i < ${#hp[@]}; i++ )); do header="${header}${sep}${hp[$i]}"; done
+  printf '%s\n' "$header"
+
+  # ── Line 2: combined stats ────────────────────────────────────────
+  # order: total cost | month | turns | cost/turn | cache HR% | avg tok/turn
+  # 🌿/📅 lead the line in bold vivid colors (gold/orange) so the two cost
+  # figures stand out from the plain-white turn/cache/avg stats.
+  hp2=()
+  [ -n "$cost_fmt" ]      && hp2+=("$(printf "${C_COST_HL}🌿 \$%s${C_RESET}" "$cost_fmt")")
+  [ -n "$month_fmt" ]     && hp2+=("$(printf "${C_MONTH_HL}📅 ~\$%s/mo · %stok/mo%s${C_RESET}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")")
+  (( turns > 0 ))         && hp2+=("$(printf "${C_BAR}♻️ %d turns${C_RESET}" "$turns")")
+  [ -n "$cost_per_turn" ] && hp2+=("$(printf "${C_BAR}💲 %s/turn${C_RESET}" "$cost_per_turn")")
+  [ -n "$cache_rate" ]    && hp2+=("$(printf "${C_BAR}📀 cache HR %d%%${C_RESET}" "$cache_rate")")
+  [ -n "$avg_tok" ]       && hp2+=("$(printf "${C_BAR}📈 avg ~%s/turn${C_RESET}" "$avg_tok")")
+  if (( ${#hp2[@]} > 0 )); then
+    header2="${hp2[0]}"
+    for (( i = 1; i < ${#hp2[@]}; i++ )); do header2="${header2}${sep}${hp2[$i]}"; done
+    printf '%s\n' "$header2"
+  fi
+
+  # ── Line 3: git info (branch / ahead-behind / dirty / last commit) ─
+  if (( ${#hp_git[@]} > 0 )); then
+    header_git="${hp_git[0]}"
+    for (( i = 1; i < ${#hp_git[@]}; i++ )); do header_git="${header_git}${sep}${hp_git[$i]}"; done
+    printf '%s\n' "$header_git"
+  fi
 fi
 
 # disk free space is tacked onto the RAM info suffix per user request.
@@ -1495,11 +1601,17 @@ if [ -n "$ctx_tok" ]; then
 fi
 # cumulative session totals — already set by early session_tokens call above
 if (( ${sum_in:-0} > 0 || ${sum_out:-0} > 0 )); then
-  io="in:$(humanize_tokens "$sum_in") out:$(humanize_tokens "$sum_out")"
-  ctx_tokens="${ctx_tokens:+$ctx_tokens }$io"
+  if (( SLB_LITE_MODE )); then
+    io="🌎 in:$(humanize_tokens "$sum_in") 🧩 out:$(humanize_tokens "$sum_out")"
+    ctx_tokens="${ctx_tokens:+$ctx_tokens · }$io"
+  else
+    io="in:$(humanize_tokens "$sum_in") out:$(humanize_tokens "$sum_out")"
+    ctx_tokens="${ctx_tokens:+$ctx_tokens }$io"
+  fi
 fi
-# cache write for current turn (cache_creation_input_tokens)
-if [[ "$ctx_cache_write" =~ ^[0-9]+$ ]] && (( ctx_cache_write > 0 )); then
+# cache write for current turn (cache_creation_input_tokens) — dropped in lite
+# mode, which keeps only the in:/out: totals on this line.
+if (( ! SLB_LITE_MODE )) && [[ "$ctx_cache_write" =~ ^[0-9]+$ ]] && (( ctx_cache_write > 0 )); then
   ctx_tokens="${ctx_tokens:+$ctx_tokens }cw:$(humanize_tokens "$ctx_cache_write")"
 fi
 # Warn once context occupancy passes 50% of the window (e.g. 1M → 500k).
@@ -1510,28 +1622,36 @@ if [[ "$ctx_tok" =~ ^[0-9]+$ ]] && [[ "$ctx_size" =~ ^[0-9]+$ ]] && (( ctx_size 
   (( ctx_tok >= ctx_half )) && ctx_warn=" ⚠️ $(humanize_tokens "$ctx_half")+"
 fi
 
-emit_bar "ctx"  "$ctx_pct"       ""            "$ctx_tokens" "$ctx_warn"
+rate_circle_fn=pct_circle
+(( SLB_LITE_MODE )) && rate_circle_fn=pct_circle_lite
+emit_bar "ctx"  "$ctx_pct"       ""            "$ctx_tokens" "$ctx_warn" "$rate_circle_fn"
 printf '\n'
-emit_bar "5h"   "${five_pct:-0}"  "$five_reset"
+emit_bar "5h"   "${five_pct:-0}"  "$five_reset" "" "" "$rate_circle_fn"
 printf '\n'
-emit_bar "week" "${week_pct:-0}"  "$week_reset"
+emit_bar "week" "${week_pct:-0}"  "$week_reset" "" "" "$rate_circle_fn"
 printf '\n'
 
 # ── RAM / CPU bars — same look as ctx/5h/week: colored circle + bar ─
 # Ordered below the rate-limit bars, CPU above RAM (RAM sits at the very
 # bottom) per user request.
-[ -n "$cpu_pct" ] && { emit_bar "CPU" "$cpu_pct" "" "load ${cpu_load}" ""; printf '\n'; }
-[ -n "$ram_pct" ] && { emit_bar "RAM" "$ram_pct" "" "$ram_info" ""; printf '\n'; }
+if (( ! SLB_LITE_MODE )); then
+  [ -n "$cpu_pct" ] && { emit_bar "CPU" "$cpu_pct" "" "load ${cpu_load}" ""; printf '\n'; }
+  [ -n "$ram_pct" ] && { emit_bar "RAM" "$ram_pct" "" "$ram_info" ""; printf '\n'; }
+fi
 
-# Trailing spacer below the week bar (Braille-blank so it isn't trimmed).
-printf '⠀\n'
-# Footer carries the session_id, which is a real identifier — SLB_SHOW_FOOTER=0
-# drops the whole line for screen sharing or recording.
-if (( SLB_SHOW_FOOTER )) && [ -n "$version" ] && [ "$version" != "null" ]; then
-  ver_line="  ${C_VERLINE}Claude Code v${version}"
-  (( SLB_CHECK_LATEST )) && is_latest_version "$version" &&
-    ver_line="${ver_line} ${C_LTS}(LTS)${C_VERLINE}"
-  [ -n "$session_id" ] && [ "$session_id" != "null" ] && ver_line="${ver_line}  ·  session_id: ${session_id}"
-  printf "%b${C_RESET}\n" "$ver_line"
+# Lite mode drops the footer AND its separating spacer entirely, so output
+# ends cleanly right after the last bar line instead of a dangling blank line.
+if (( ! SLB_LITE_MODE )); then
+  # Trailing spacer below the week bar (Braille-blank so it isn't trimmed).
+  printf '⠀\n'
+  # Footer carries the session_id, which is a real identifier — SLB_SHOW_FOOTER=0
+  # drops the whole line for screen sharing or recording.
+  if (( SLB_SHOW_FOOTER )) && [ -n "$version" ] && [ "$version" != "null" ]; then
+    ver_line="  ${C_VERLINE}Claude Code v${version}"
+    (( SLB_CHECK_LATEST )) && is_latest_version "$version" &&
+      ver_line="${ver_line} ${C_LTS}(LTS)${C_VERLINE}"
+    [ -n "$session_id" ] && [ "$session_id" != "null" ] && ver_line="${ver_line}  ·  session_id: ${session_id}"
+    printf "%b${C_RESET}\n" "$ver_line"
+  fi
 fi
 # (parallel-producer scratch dir is removed by the EXIT trap set at creation)

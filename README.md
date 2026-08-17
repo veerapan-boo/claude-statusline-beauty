@@ -30,6 +30,47 @@ packaged as an agent skill that installs, wires up and updates itself.
 
 Every line can be switched off.
 
+## Modes
+
+Two modes ship. **Normal** (above) is the default — full color, every segment.
+**Lite** strips the decoration down for a plainer terminal:
+
+```
+📡 a9ccdf31  💻 claude-statusline-beauty  |  🌿 main  |  ± 7 files  +1569 -132  |  6d
+⚡️ Sonnet 5 · 🧠 low (Thinking)  |  0 skills | 4 agents | 0 mcp | 129 tools
+🌐 $9.68  |  ~$1571.97/mo · 1675.1Mtok/mo · 65 turns · $0.149 / turn
+🟢 ctx  [███░░░░░░░░░░░░░░░░░░░░░░]  15% · 145.5k/1M · 🌎 in:73 🧩 out:26.3k
+🟢 5h   [█░░░░░░░░░░░░░░░░░░░░░░░░]   6% · resets 42m (10:30 PM)
+⚪ week [██████████████████████░░░]  89% · resets 7h 12m (05:00 AM)
+```
+
+Lite mode is a different layout, not just a recolored normal mode — three
+lines instead of four:
+
+- **Line 1**: the first 8 characters of `session_id`, the folder, and (when
+  inside a repo) branch/worktree marker, dirty file count + lines-changed, and
+  last-commit age. Ahead/behind is dropped — there's no room for it here.
+- **Line 2**: model, effort/thinking, then the skills/agents/mcp/tools
+  counters — plain text, no emoji on the counters.
+- **Line 3**: session cost, month-to-date cost/tokens, turns, cost/turn.
+  `📀 cache HR` and `📈 avg/turn` are dropped, same as before.
+- Every color collapses to gray, except the model name — that keeps the purple
+  normal mode uses for Sonnet. No rainbow gradient on any model.
+- The ctx/5h/week circles collapse to two states: 🟢 under 75%, ⚪ at 75%+ —
+  the ctx line's token breakdown also gets 🌎/🧩 markers on in/out.
+- **CPU and RAM bars are not shown at all in lite mode.**
+- The footer (version + `session_id`) and its blank spacer line are gone —
+  output ends right after the last bar.
+
+Switch modes any time, no restart needed:
+
+```
+/claude-statusline-beauty lite     # minimal render
+/claude-statusline-beauty normal   # back to full
+```
+
+or directly: `bash ~/.claude/skills/claude-statusline-beauty/scripts/manage.sh lite`.
+
 ## Install
 
 ```bash
@@ -123,6 +164,7 @@ SLB_SHOW_RAM=1
 SLB_CHECK_LATEST=1      # the only network call the status line makes
 SLB_SHOW_FOOTER=1       # version + session_id — turn off when screen sharing
 SLB_BAR_WIDTH=25
+SLB_LITE_MODE=0         # 1 = minimal render, see "Modes" above
 ```
 
 Editing that file by hand always works. But you can also just say what you want
@@ -138,6 +180,7 @@ line maps to:
 | "hide how much I'm spending this month" | `SLB_SHOW_MONTHLY=0` |
 | "the bars are too wide for my terminal" | `SLB_BAR_WIDTH=14` |
 | "put the CPU bar back" | `SLB_SHOW_CPU=1` |
+| "switch to lite mode" / "less color, fewer segments" | `manage.sh lite` (`SLB_LITE_MODE=1`) |
 
 No restart — the change shows up on the next render.
 
@@ -155,6 +198,8 @@ bash $S install         # install + wire up settings.json
 bash $S update          # pull the latest release
 bash $S doctor          # dependency and environment report
 bash $S render-demo     # preview without restarting Claude Code
+bash $S lite            # switch to the minimal, low-color render
+bash $S normal          # switch back to the full render
 bash $S uninstall       # restore the previous statusLine setting
 ```
 
