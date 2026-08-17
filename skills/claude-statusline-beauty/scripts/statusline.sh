@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.2.3
+# statusline-beauty-version: 1.2.4
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,

@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-08-18
+
+### Added
+- **`manage.sh update` now syncs the skill package itself, not just the
+  deployed script.** Previously `update` only ever refreshed
+  `~/.claude/statusline-beauty/statusline.sh` — the skill package
+  (`SKILL.md`, this `manage.sh`, `references/*.md`, installed by `npx
+  skills add`) was invisible to it, so a fully-updated deployed script could
+  coexist with an old `manage.sh` that didn't know about newer commands.
+  `status --json` gains `bundled_version` (the package's own embedded
+  version) and `skill_package_stale` (true when it's behind the latest
+  release); `update` checks this and, when true, downloads and validates
+  `SKILL.md`/`manage.sh`/`references/*.md` from the same release and
+  atomically replaces them — including replacing the currently-running
+  `manage.sh`, which is safe because the process already has the old file
+  open and finishes this invocation on it; only the *next* invocation sees
+  the new one. Replacement resolves through symlinks rather than breaking
+  them, in case the install is a symlinked canonical checkout rather than
+  a plain copy.
+
+  **One-time bootstrap required**: this only works once the *currently
+  running* `manage.sh` already has this self-sync code — a checkout on an
+  older version has no way to fetch code it doesn't contain. Anyone
+  currently behind this release needs one manual re-run of the install
+  command; every `update` after that self-syncs on its own.
+
 ## [1.2.3] - 2026-08-18
 
 ### Fixed

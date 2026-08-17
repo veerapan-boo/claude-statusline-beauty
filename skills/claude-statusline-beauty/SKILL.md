@@ -1,7 +1,7 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.2.3
+version: 1.2.4
 author: veerapan-boo
 license: MIT
 tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
@@ -36,8 +36,8 @@ into one mental model, each has a different effect:
 | The user says | Run | Notes |
 |---|---|---|
 | `/claude-statusline-beauty` with nothing installed | `manage.sh install` | Checks the latest GitHub release first, so a fresh install lands on the newest version, not whatever this skill checkout happens to bundle. |
-| "update the status line" | `manage.sh update` | Pulls the **latest published release only** — never `main` directly (see Platform support / maintainer notes for why). Overwrites the installed script; `config.sh` and `settings.json` are untouched, so existing switches (including `SLB_LITE_MODE`) survive. |
-| "update and switch to lite mode" | `manage.sh update` then `manage.sh lite` | Two sequential steps, not one atomic command. Step 2 only knows about `lite` if the release step 1 pulled actually ships it — going by *this* `SKILL.md`'s Arguments table below. If the installed skill predates a feature, you won't know that feature exists; don't invent a switch that isn't in this file's tables, tell the user to re-run `npx skills add` to refresh the skill itself. |
+| "update the status line" | `manage.sh update` | Pulls the **latest published release only** — never `main` directly (see Platform support / maintainer notes for why). Overwrites the installed script; `config.sh` and `settings.json` are untouched, so existing switches (including `SLB_LITE_MODE`) survive. **Also syncs the skill package itself** (this SKILL.md, this manage.sh, references/*.md) whenever `skill_package_stale` is true — one command, both halves. |
+| "update and switch to lite mode" | `manage.sh update` then `manage.sh lite` | Two sequential steps, not one atomic command. Step 1 now syncs the skill package too (see above), so step 2 knows about `lite` as long as the skill package it's running from HAS this self-sync capability at all. If it doesn't — a checkout old enough to predate this feature entirely — `update` can't fetch code it has no way to run; tell the user to re-run `npx skills add` once to bootstrap onto a version that can self-sync from then on. |
 | "switch to lite mode" / "back to normal" | `manage.sh lite` / `manage.sh normal` | Only touches `SLB_LITE_MODE` in `config.sh`, in place. No download, no restart. Recreates `config.sh` with defaults first if it was deleted — don't tell the user to reinstall for this. |
 
 ## Procedure
@@ -59,6 +59,8 @@ The JSON tells you everything needed to decide what to do:
 | `installed_version` / `latest_version` | semver strings, or `main@<sha>` when no release exists yet |
 | `latest_source` | `release`, `main`, `ratelimited`, or `unavailable` |
 | `update_available` | true when a newer version can be pulled |
+| `bundled_version` | the version embedded in **this skill package's own copy** of statusline.sh — i.e. how current *this SKILL.md and this manage.sh* are, not the deployed script |
+| `skill_package_stale` | true when `bundled_version` is behind `latest_version`. `manage.sh update` fixes this too — it syncs SKILL.md/manage.sh/references, not just the deployed script — unless the currently-running skill package predates that self-sync capability entirely, in which case it needs one manual `npx skills add` to bootstrap (see step 3) |
 | `settings_wired` | true when `settings.json` already points at this status line |
 | `settings_conflict` | the *other* command currently configured, or `null` |
 | `warnings[]` | missing `jq`, old bash, Windows/PowerShell caveat, and so on |
@@ -95,6 +97,23 @@ rather than as a failure.
 - **Not installed** → `bash "$SKILL_DIR/scripts/manage.sh" install`
 - **Installed, `update_available: true`** → `bash "$SKILL_DIR/scripts/manage.sh" update`
 - **Installed and current** → say so and stop. Do not reinstall.
+- **`skill_package_stale: true`** (regardless of the above) → run
+  `manage.sh update` — it syncs the skill package (this SKILL.md, this
+  manage.sh, references/*.md) as part of the same command, not just the
+  deployed script. If `skill_package_stale` is STILL true immediately after
+  a successful `update`, the running skill package predates the self-sync
+  feature entirely — code that isn't there can't fetch its own replacement.
+  That specific case needs one manual bootstrap:
+  ```
+  npx skills add https://github.com/veerapan-boo/claude-statusline-beauty -g -a claude-code
+  ```
+  After that one-time re-install, every future `update` self-syncs on its
+  own. This was a real source of confusion before the self-sync existed:
+  "I ran update but nothing changed" meant the deployed *script* updated
+  fine while the *skill package* — the thing actually answering
+  `/claude-statusline-beauty` requests — stayed old. Re-check
+  `skill_package_stale` after running `update` rather than assuming it's
+  fixed; report which case applies.
 
 `install` checks for a newer release first, so a fresh install lands on the
 latest version rather than whatever this checkout happens to carry.

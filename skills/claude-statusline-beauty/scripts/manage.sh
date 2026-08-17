@@ -37,6 +37,9 @@ set -uo pipefail
 REPO_OWNER="veerapan-boo"
 REPO_NAME="claude-statusline-beauty"
 RAW_SCRIPT_PATH="skills/claude-statusline-beauty/scripts/statusline.sh"
+RAW_MANAGE_PATH="skills/claude-statusline-beauty/scripts/manage.sh"
+RAW_SKILL_MD_PATH="skills/claude-statusline-beauty/SKILL.md"
+RAW_REF_DIR="skills/claude-statusline-beauty/references"
 API_BASE="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
 RAW_BASE="https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME"
 
@@ -157,6 +160,26 @@ version_gt() {
     fi
   done
   return 1
+}
+
+# The skill PACKAGE's own version — its embedded copy of statusline.sh, read
+# purely as a version fingerprint for the package as a whole (SKILL.md, this
+# manage.sh, references/*.md all ship from the same repo checkout/release, so
+# they move together).
+skill_package_version() { script_version "$SCRIPT_DIR/statusline.sh" 2>/dev/null || true; }
+
+# True when the skill package is behind the latest release. `update` only
+# ever refreshes the DEPLOYED script (INSTALLED_SCRIPT) — it has no way to
+# touch the package itself, which `npx skills add` installed under
+# SCRIPT_DIR and owns exclusively (see the BASH_SOURCE symlink comment near
+# the top of this file). So a fully-updated installed_version can coexist
+# with a stale package that still runs an OLD manage.sh and doesn't know
+# about newer commands — this is what catches that "update ran, but nothing
+# changed" confusion. Requires LATEST_SOURCE/LATEST_VERSION already resolved
+# by the caller (resolve_latest).
+skill_package_stale() {
+  local bundled_v=$1
+  [ "$LATEST_SOURCE" = "release" ] && [ -n "$bundled_v" ] && version_gt "$LATEST_VERSION" "$bundled_v"
 }
 
 # ── HTTP ──────────────────────────────────────────────────────────
@@ -321,6 +344,95 @@ validate_script() {
                                            || { VALIDATE_ERR="missing version marker"; return 1; }
   bash -n "$f" 2>/dev/null                 || { VALIDATE_ERR="bash syntax check failed"; return 1; }
   smoke_test "$f"                          || { VALIDATE_ERR="smoke render produced no output"; return 1; }
+  return 0
+}
+
+# Lighter validation for a candidate manage.sh — it has no version marker of
+# its own and nothing to smoke-render, but a bad download (an HTML error
+# page, a truncated transfer, the wrong file entirely) must still be caught
+# before it replaces the script currently running.
+validate_manage_script() {
+  local f=$1 first
+  [ -s "$f" ]               || { VALIDATE_ERR="file is empty"; return 1; }
+  IFS= read -r first < "$f"
+  case "$first" in '#!'*) ;; *) VALIDATE_ERR="missing shebang"; return 1 ;; esac
+  bash -n "$f" 2>/dev/null  || { VALIDATE_ERR="bash syntax check failed"; return 1; }
+  grep -qF 'manage.sh — install, update and inspect statusline-beauty.' "$f" \
+                             || { VALIDATE_ERR="doesn't look like manage.sh"; return 1; }
+  return 0
+}
+
+# SKILL.md / references/*.md — no shebang or syntax to check, just enough to
+# rule out an empty or truncated download.
+validate_text_file() {
+  [ -s "$1" ] || { VALIDATE_ERR="file is empty"; return 1; }
+  return 0
+}
+
+# Replace $2 with the content of $1 (a downloaded temp file), atomically,
+# without breaking $2 if it is a symlink — `npx skills add` can install a
+# skill by symlinking a canonical checkout into place rather than copying it
+# (see the BASH_SOURCE resolution note above SCRIPT_DIR). Renaming a temp
+# file directly over a symlinked PATH would delete the link and leave a
+# plain file in its place; resolving through it first and renaming into the
+# REAL directory instead updates what the link points at, which is what a
+# symlink-based install actually needs.
+_atomic_replace() {
+  local src=$1 dest=$2 executable=$3 real=$2
+  if [ -L "$dest" ] && readlink -f / >/dev/null 2>&1; then
+    real=$(readlink -f "$dest") || real=$dest
+  fi
+  cp "$src" "$real.tmp.$$" && mv -f "$real.tmp.$$" "$real" || {
+    rm -f "$real.tmp.$$"; return 1; }
+  (( executable )) && chmod +x "$real" 2>/dev/null
+  return 0
+}
+
+# Download $2@$1, validate with $5 (a validate_* function, when given), and
+# atomically replace $3. Reports and returns 1 on any failure rather than
+# aborting the caller's whole sync — one bad file (a transient 404, a
+# validation miss) shouldn't cost the rest.
+_sync_skill_file() {
+  local ref=$1 raw_path=$2 dest=$3 executable=$4 validator=${5:-}
+  local dl; dl=$(download_ref "$ref" "$raw_path") || {
+    warn "  could not fetch $(basename -- "$dest")"; return 1; }
+  if [ -n "$validator" ]; then
+    VALIDATE_ERR=""
+    if ! "$validator" "$dl"; then
+      warn "  refusing $(basename -- "$dest"): $VALIDATE_ERR"; rm -f "$dl"; return 1
+    fi
+  fi
+  if _atomic_replace "$dl" "$dest" "$executable"; then
+    rm -f "$dl"; return 0
+  fi
+  rm -f "$dl"
+  warn "  could not write $(basename -- "$dest")"
+  return 1
+}
+
+# Refresh the skill PACKAGE itself — SKILL.md, this manage.sh, references/*.md
+# — from the same release the deployed script is being updated to. This is
+# what closes the gap skill_package_stale exists to detect: `update` on its
+# own only ever touched INSTALLED_SCRIPT, so a fully-updated deployed script
+# could coexist with an old SKILL.md/manage.sh that doesn't know about newer
+# commands. Best-effort per file — see _sync_skill_file.
+sync_skill_package() {
+  local ref=$1 skill_root; skill_root=$(dirname -- "$SCRIPT_DIR")
+  local total=0 ok_n=0
+
+  total=$((total+1)); _sync_skill_file "$ref" "$RAW_MANAGE_PATH"   "$SCRIPT_DIR/manage.sh"                 1 validate_manage_script && ok_n=$((ok_n+1))
+  total=$((total+1)); _sync_skill_file "$ref" "$RAW_SCRIPT_PATH"   "$SCRIPT_DIR/statusline.sh"             1 validate_script        && ok_n=$((ok_n+1))
+  total=$((total+1)); _sync_skill_file "$ref" "$RAW_SKILL_MD_PATH" "$skill_root/SKILL.md"                  0 validate_text_file     && ok_n=$((ok_n+1))
+  local ref_file
+  for ref_file in configuration.md platform-notes.md troubleshooting.md; do
+    total=$((total+1))
+    _sync_skill_file "$ref" "$RAW_REF_DIR/$ref_file" "$skill_root/references/$ref_file" 0 validate_text_file && ok_n=$((ok_n+1))
+  done
+
+  if (( ok_n < total )); then
+    warn "skill package sync: $ok_n/$total files updated — the rest kept their previous content"
+    return 1
+  fi
   return 0
 }
 
@@ -559,10 +671,10 @@ install_script_file() {
   return 0
 }
 
-download_ref() {  # $1 = git ref -> prints temp file path
-  local ref=$1 tmp
+download_ref() {  # $1 = git ref, $2 = raw path (default statusline.sh) -> prints temp file path
+  local ref=$1 path=${2:-$RAW_SCRIPT_PATH} tmp
   tmp=$(mktemp "${TMPDIR:-/tmp}/slb-dl.XXXXXX" 2>/dev/null) || return 1
-  if http_get "$RAW_BASE/$ref/$RAW_SCRIPT_PATH" && [ "$HTTP_STATUS" = 200 ] && [ -n "$HTTP_BODY" ]; then
+  if http_get "$RAW_BASE/$ref/$path" && [ "$HTTP_STATUS" = 200 ] && [ -n "$HTTP_BODY" ]; then
     printf '%s\n' "$HTTP_BODY" > "$tmp"
     printf '%s' "$tmp"
     return 0
@@ -616,6 +728,10 @@ cmd_status() {
   [ "$cur" = "$(desired_command)" ] && wired="true"
   update_available && upd="true"
 
+  local bundled_v pkg_stale
+  bundled_v=$(skill_package_version)
+  pkg_stale=$(skill_package_stale "$bundled_v" && printf true || printf false)
+
   if [ "$JSON_OUT" = 1 ]; then
     local conflict="null"
     [ -n "$cur" ] && [ "$wired" = "false" ] && conflict=$(jstr "$cur")
@@ -627,7 +743,8 @@ cmd_status() {
     printf '  "config_dir": %s,\n'         "$(jstr "$CONFIG_DIR")"
     printf '  "config_file": %s,\n'        "$(jstr "$CONFIG_FILE")"
     printf '  "skill_dir": %s,\n'          "$(jstr "$SCRIPT_DIR")"
-    printf '  "bundled_version": %s,\n'    "$(jstr "$(script_version "$SCRIPT_DIR/statusline.sh" 2>/dev/null || true)")"
+    printf '  "bundled_version": %s,\n'    "$(jstr "$bundled_v")"
+    printf '  "skill_package_stale": %s,\n' "$pkg_stale"
     printf '  "latest_version": %s,\n'     "$(jstr "$LATEST_VERSION")"
     printf '  "latest_ref": %s,\n'         "$(jstr "$LATEST_REF")"
     printf '  "latest_source": %s,\n'      "$(jstr "$LATEST_SOURCE")"
@@ -667,6 +784,7 @@ cmd_status() {
     *)       say "  ${D}latest:${N} unknown${LATEST_NOTE:+  ${D}($LATEST_NOTE)${N}}" ;;
   esac
   [ "$upd" = "true" ] && warn "update available — run: manage.sh update"
+  [ "$pkg_stale" = "true" ] && warn "the skill package itself is out of date (SKILL.md, manage.sh) — run: manage.sh update"
   if [ "$wired" = "true" ]; then ok "settings.json is wired up"
   elif [ -n "$cur" ];      then warn "settings.json has a different status line: $cur"
   else                          warn "settings.json has no status line configured"
@@ -751,8 +869,23 @@ cmd_update() {
     warn "$LATEST_NOTE"
     return 0
   fi
+  # Checked regardless of which branch runs below — a stale skill package
+  # (SKILL.md, this manage.sh) is invisible to installed_version either way,
+  # since neither the "already up to date" short-circuit nor the deployed-
+  # script download below touches SCRIPT_DIR on their own. Sync it here so
+  # ONE `update` command actually refreshes both halves, instead of leaving
+  # the user to separately re-run `npx skills add` for the skill package.
+  local pkg_synced=0
+  if skill_package_stale "$(skill_package_version)"; then
+    say "  syncing skill package (SKILL.md, manage.sh, references) -> $LATEST_VERSION"
+    sync_skill_package "$LATEST_REF" && pkg_synced=1
+  fi
   if ! update_available && [ "$FORCE" != 1 ]; then
-    ok "already up to date ($INSTALLED_VERSION)"
+    if (( pkg_synced )); then
+      ok "script already up to date ($INSTALLED_VERSION) — skill package synced"
+    else
+      ok "already up to date ($INSTALLED_VERSION)"
+    fi
     return 0
   fi
 
@@ -775,6 +908,7 @@ cmd_update() {
   local v; v=$(script_version "$INSTALLED_SCRIPT" || printf 'unknown')
   write_marker "$v" "$LATEST_REF" "$LATEST_SOURCE"
   ok "updated to $v"
+  (( pkg_synced )) && say "  ${D}skill package (SKILL.md, manage.sh, references) synced too${N}"
   say "  ${D}backup of the previous version is in $BACKUP_DIR${N}"
   return 0
 }

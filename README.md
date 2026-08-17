@@ -66,7 +66,7 @@ handles the rest:
 | You say | What happens |
 |---|---|
 | *(nothing installed yet, just ask)* | Installs and wires everything up. |
-| "update the status line" | Pulls the latest version. Your mode and settings stay exactly as they were. |
+| "update the status line" | Pulls the latest version. Your mode and settings stay exactly as they were. If "nothing seems to have changed" afterward, ask Claude to re-run the install command — see [Advanced](#every-request-and-what-actually-runs). |
 | "switch to lite mode" / "back to normal" | Switches instantly — no restart. |
 | "turn off the CPU and RAM bars" | Hides just those two lines. |
 | "hide my session id, I'm screen sharing" | Turns off the footer. |
@@ -190,8 +190,8 @@ Lite mode is a different layout, not just a recolored normal mode:
 | You say | Command | Notes |
 |---|---|---|
 | `/claude-statusline-beauty` (nothing installed yet) | `manage.sh install` | Checks the latest GitHub release, installs it (or the skill's own bundled copy if that's newer), writes a default `config.sh`, wires `settings.json`. |
-| "update the status line" | `manage.sh update` | Pulls whatever the **latest published release** is and overwrites the installed script only. `config.sh` and `settings.json` are untouched, so your mode and every switch survive exactly as they were. |
-| "update and switch to lite mode" | update, then `manage.sh lite` | Two steps back to back. The second only works correctly if the release you just updated to actually ships lite mode — on a skill checkout that predates a feature, Claude won't know it exists and may guess at the closest thing in its (stale) instructions instead. Re-running `npx skills add` (or asking to update again) pulls the current `SKILL.md` and fixes that. |
+| "update the status line" | `manage.sh update` | Pulls whatever the **latest published release** is and overwrites the installed script. `config.sh` and `settings.json` are untouched, so your mode and every switch survive exactly as they were. **Also syncs the skill package itself** (this README's `SKILL.md`, `manage.sh`, references/*.md — the files `npx skills add` installed) whenever `status --json`'s `skill_package_stale` field is true, so one `update` covers both halves. Exception: if the skill package currently running predates this self-sync feature entirely, it can't fetch code it doesn't have — that needs one manual [re-install](#install) to bootstrap onto a version that can self-sync from then on. |
+| "update and switch to lite mode" | update, then `manage.sh lite` | Two steps back to back. Since `update` now syncs the skill package too, step 2 knows about `lite` as long as the running skill package has self-sync at all — see the bootstrap exception above. |
 | "switch to lite mode" / "back to normal" | `manage.sh lite` / `manage.sh normal` | Flips `SLB_LITE_MODE` in the existing `config.sh` in place. No download, no reinstall, no restart. Recreates `config.sh` with defaults first if it was deleted, instead of erroring. |
 | "reset my config, I messed it up" | `manage.sh reset-config` | Backs up the current `config.sh` (timestamped, under `backups/`) and rewrites every switch back to its documented default — **except** `SLB_LITE_MODE`, which is carried over as-is, so a reset can't silently bounce you out of lite mode. |
 
