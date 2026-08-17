@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.2.0
+# statusline-beauty-version: 1.2.1
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -1118,7 +1118,11 @@ emit_bar() {
   local circle; circle=$("$circle_fn" "$p")
   printf "  %s \033[0;37m%-4s${C_RESET} ${c}[%s] %3d%%${C_RESET}" "$circle" "$label" "$bar" "$p"
   local reset_str; reset_str=$(time_until_reset "$reset_ts")
-  [ -n "$reset_str" ] && printf " ${C_INFO}· resets %s${C_RESET}" "$reset_str"
+  if [ -n "$reset_str" ]; then
+    if (( SLB_LITE_MODE )); then printf " ${C_INFO}⟳ %s${C_RESET}" "$reset_str"
+    else                         printf " ${C_INFO}· resets %s${C_RESET}" "$reset_str"
+    fi
+  fi
   [ -n "$info" ]      && printf " ${C_INFO}· %s${C_RESET}" "$info"
   [ -n "$suffix" ]    && printf " ${C_WARN}%s${C_RESET}" "$suffix"
 }
@@ -1503,57 +1507,48 @@ if (( turns > 0 && total_session_toks > 0 )); then
 fi
 
 if (( SLB_LITE_MODE )); then
-  # dotsep: the lite-mode separator between trailing same-kind stat fields
-  # (turns, cost/turn) — single-spaced, matching the "· resets"/"· info"
-  # style emit_bar already uses. sep (pipe) still marks the boundary
-  # between distinct field GROUPS (e.g. git identity vs. its stats,
-  # effort vs. the counter group, cost vs. month).
-  dotsep="$(printf " ${C_DIM}·${C_RESET} ")"
-
-  # ── Lite Line 1: session id, folder, git branch/dirty/changed/last —
-  # no ahead/behind; session id + folder join with a plain space (they're
-  # one "where am I" unit), branch is a new field (sep), dirty-files and
-  # the +/-lines-changed are one "what changed" unit (plain space), and
-  # last-commit age is its own trailing field (dotsep).
+  # ── Lite Line 1: session id, model, effort/thinking, cost, turns, then
+  # the tool-use counters. turns/agents/tools always print (even at 0) once
+  # SLB_SHOW_TOOL_COUNTS is on; skills/mcp print only when non-zero — a
+  # session with no skill or MCP calls yet shouldn't clutter the line with
+  # zeros for counters that may never fire.
   line1="$(printf "${C_DIM}📡 %s${C_RESET}" "${session_id:0:8}")"
-  [ -n "$short_cwd" ] && line1="${line1}  $(printf "${C_DIM}💻 %s${C_RESET}" "$short_cwd")"
-  if [ -n "$git_branch" ]; then
-    if [ -n "$worktree" ]; then
-      line1="${line1}${sep}$(printf "${C_DIM}🌿 (worktree) %s${C_RESET}" "$git_branch")"
-    else
-      line1="${line1}${sep}$(printf "${C_DIM}🌿 %s${C_RESET}" "$git_branch")"
-    fi
-    changed=""
-    (( git_dirty > 0 )) && changed="$(printf "${C_DIM}± %d files${C_RESET}" "$git_dirty")"
-    if (( la > 0 || ld > 0 )); then
-      lines_fmt="$(printf "${C_ADD}+%s${C_RESET} ${C_DEL}-%s${C_RESET}" "$la" "$ld")"
-      changed="${changed:+$changed  }$lines_fmt"
-    fi
-    [ -n "$changed" ] && line1="${line1}${sep}${changed}"
-    [ -n "$git_last" ]  && line1="${line1}${sep}$(printf "${C_DIM}%s${C_RESET}" "$git_last")"
+  line1="${line1} $(printf "${C_MODEL}⚡️ %s${C_RESET}" "$model")"
+  [ -n "$effort" ] && line1="${line1} · $(printf "${C_DIM}🧠 %s${C_RESET}" "$efrt_label")"
+  [ -n "$cost_fmt" ] && line1="${line1} $(printf "${C_DIM}\$%s${C_RESET}" "$cost_fmt")"
+  line1="${line1} · $(printf "${C_DIM}%d turns${C_RESET}" "$turns")"
+  if (( SLB_SHOW_TOOL_COUNTS )); then
+    line1="${line1} | $(printf "${C_DIM}%s agents${C_RESET}" "$agent_n")"
+    line1="${line1} | $(printf "${C_DIM}%s tools${C_RESET}" "$tool_n")"
+    (( skill_n > 0 )) && line1="${line1} | $(printf "${C_DIM}%s skills${C_RESET}" "$skill_n")"
+    (( mcp_n   > 0 )) && line1="${line1} | $(printf "${C_DIM}%s mcp${C_RESET}" "$mcp_n")"
   fi
   printf '%s\n' "$line1"
 
-  # ── Lite Line 2: model + effort/thinking, then the (emoji-free) counts ─
-  line2="$(printf "${C_MODEL}⚡️ %s${C_RESET}" "$model")"
-  [ -n "$effort" ] && line2="${line2} · $(printf "${C_DIM}🧠 %s${C_RESET}" "$efrt_label")"
-  if [ "$as_type" != "none" ] || (( tool_n > 0 || mcp_n > 0 )); then
-    line2="${line2}${sep}$(printf "${C_DIM}%s skills${C_RESET}" "$skill_n")"
-    line2="${line2} | $(printf "${C_DIM}%s agents${C_RESET}" "$agent_n")"
-    line2="${line2} | $(printf "${C_DIM}%s mcp${C_RESET}" "$mcp_n")"
-    line2="${line2} | $(printf "${C_DIM}%s tools${C_RESET}" "$tool_n")"
+  # ── Lite Line 2: folder, then git — branch always prints when
+  # SLB_SHOW_GIT is on, even outside a repository (a placeholder rather
+  # than dropping the whole line, unlike normal mode).
+  line2="$(printf "${C_DIM}🌐 %s${C_RESET}" "$short_cwd")"
+  if (( SLB_SHOW_GIT )); then
+    if [ -n "$git_branch" ]; then
+      if [ -n "$worktree" ]; then
+        line2="${line2}${sep}$(printf "${C_DIM}🌿 (worktree) %s${C_RESET}" "$git_branch")"
+      else
+        line2="${line2}${sep}$(printf "${C_DIM}🌿 %s${C_RESET}" "$git_branch")"
+      fi
+      changed=""
+      (( git_dirty > 0 )) && changed="$(printf "${C_DIM}± %d files${C_RESET}" "$git_dirty")"
+      if (( la > 0 || ld > 0 )); then
+        lines_fmt="$(printf "${C_ADD}+%s${C_RESET} ${C_DEL}-%s${C_RESET}" "$la" "$ld")"
+        changed="${changed:+$changed  }$lines_fmt"
+      fi
+      [ -n "$changed" ] && line2="${line2}${sep}${changed}"
+      [ -n "$git_last" ]  && line2="${line2}${sep}$(printf "${C_DIM}%s${C_RESET}" "$git_last")"
+    else
+      line2="${line2}${sep}$(printf "${C_DIM}🌿 (repo not found)${C_RESET}")"
+    fi
   fi
   printf '%s\n' "$line2"
-
-  # ── Lite Line 3: cost | month · turns · cost / turn — cache HR and
-  # avg/turn stay dropped, same as before.
-  if [ -n "$cost_fmt" ]; then
-    line3="$(printf "${C_DIM}🌐 \$%s${C_RESET}" "$cost_fmt")"
-    [ -n "$month_fmt" ]     && line3="${line3}${sep}$(printf "${C_DIM}~\$%s/mo · %stok/mo%s${C_RESET}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")"
-    (( turns > 0 ))         && line3="${line3}${dotsep}$(printf "${C_DIM}%d turns${C_RESET}" "$turns")"
-    [ -n "$cost_per_turn" ] && line3="${line3}${dotsep}$(printf "${C_DIM}%s / turn${C_RESET}" "$cost_per_turn")"
-    printf '%s\n' "$line3"
-  fi
 else
   header="${hp[0]}"
   for (( i = 1; i < ${#hp[@]}; i++ )); do header="${header}${sep}${hp[$i]}"; done
@@ -1599,15 +1594,12 @@ if [ -n "$ctx_tok" ]; then
     ctx_tokens="$(humanize_tokens "$ctx_tok")"
   fi
 fi
-# cumulative session totals — already set by early session_tokens call above
-if (( ${sum_in:-0} > 0 || ${sum_out:-0} > 0 )); then
-  if (( SLB_LITE_MODE )); then
-    io="🌎 in:$(humanize_tokens "$sum_in") 🧩 out:$(humanize_tokens "$sum_out")"
-    ctx_tokens="${ctx_tokens:+$ctx_tokens · }$io"
-  else
-    io="in:$(humanize_tokens "$sum_in") out:$(humanize_tokens "$sum_out")"
-    ctx_tokens="${ctx_tokens:+$ctx_tokens }$io"
-  fi
+# cumulative session totals — already set by early session_tokens call above.
+# Lite mode drops the in:/out: numbers entirely (see the 🌎 marker appended
+# after the ctx bar itself, below) — only normal mode prints them here.
+if (( ${sum_in:-0} > 0 || ${sum_out:-0} > 0 )) && (( ! SLB_LITE_MODE )); then
+  io="in:$(humanize_tokens "$sum_in") out:$(humanize_tokens "$sum_out")"
+  ctx_tokens="${ctx_tokens:+$ctx_tokens }$io"
 fi
 # cache write for current turn (cache_creation_input_tokens) — dropped in lite
 # mode, which keeps only the in:/out: totals on this line.
@@ -1625,11 +1617,23 @@ fi
 rate_circle_fn=pct_circle
 (( SLB_LITE_MODE )) && rate_circle_fn=pct_circle_lite
 emit_bar "ctx"  "$ctx_pct"       ""            "$ctx_tokens" "$ctx_warn" "$rate_circle_fn"
+# Lite mode's ctx/5h lines end with a bare marker emoji instead of the in:/out:
+# figures dropped above — 🌎 only when there's actual session-token data to
+# point at, 🧩 unconditionally (5h has no equivalent per-turn figure to gate on).
+(( SLB_LITE_MODE )) && (( ${sum_in:-0} > 0 || ${sum_out:-0} > 0 )) && printf " ${C_DIM}· 🌎${C_RESET}"
 printf '\n'
 emit_bar "5h"   "${five_pct:-0}"  "$five_reset" "" "" "$rate_circle_fn"
+(( SLB_LITE_MODE )) && printf " ${C_DIM}🧩${C_RESET}"
 printf '\n'
 emit_bar "week" "${week_pct:-0}"  "$week_reset" "" "" "$rate_circle_fn"
 printf '\n'
+
+# Lite-only: month-to-date cost/tokens gets its own trailing line, but only
+# early in a session (turns 0-10) — after that it's assumed the user has
+# already seen it and the line just adds clutter to every render.
+if (( SLB_LITE_MODE )) && [ -n "$month_fmt" ] && (( turns <= 10 )); then
+  printf "${C_DIM}💲~\$%s/mo · %stok/mo%s${C_RESET}\n" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix"
+fi
 
 # ── RAM / CPU bars — same look as ctx/5h/week: colored circle + bar ─
 # Ordered below the rate-limit bars, CPU above RAM (RAM sits at the very

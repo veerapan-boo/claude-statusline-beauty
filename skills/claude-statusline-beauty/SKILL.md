@@ -1,7 +1,7 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.2.0
+version: 1.2.1
 author: veerapan-boo
 license: MIT
 tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
@@ -27,6 +27,18 @@ A multi-line status line for Claude Code, packaged so it installs and updates it
 All the real work lives in `scripts/manage.sh`. Do not hand-edit `settings.json`
 or copy the script around manually — the script handles backups, validation and
 rollback that ad-hoc edits would skip.
+
+## Example prompts
+
+Four different requests map onto different subcommands — don't collapse them
+into one mental model, each has a different effect:
+
+| The user says | Run | Notes |
+|---|---|---|
+| `/claude-statusline-beauty` with nothing installed | `manage.sh install` | Checks the latest GitHub release first, so a fresh install lands on the newest version, not whatever this skill checkout happens to bundle. |
+| "update the status line" | `manage.sh update` | Pulls the **latest published release only** — never `main` directly (see Platform support / maintainer notes for why). Overwrites the installed script; `config.sh` and `settings.json` are untouched, so existing switches (including `SLB_LITE_MODE`) survive. |
+| "update and switch to lite mode" | `manage.sh update` then `manage.sh lite` | Two sequential steps, not one atomic command. Step 2 only knows about `lite` if the release step 1 pulled actually ships it — going by *this* `SKILL.md`'s Arguments table below. If the installed skill predates a feature, you won't know that feature exists; don't invent a switch that isn't in this file's tables, tell the user to re-run `npx skills add` to refresh the skill itself. |
+| "switch to lite mode" / "back to normal" | `manage.sh lite` / `manage.sh normal` | Only touches `SLB_LITE_MODE` in `config.sh`, in place. No download, no restart. Recreates `config.sh` with defaults first if it was deleted — don't tell the user to reinstall for this. |
 
 ## Procedure
 
@@ -126,6 +138,7 @@ call, not yours.
 | `demo` | `manage.sh render-demo` — render from a fixture without restarting |
 | `lite` | `manage.sh lite` — switch to the minimal, low-color render |
 | `normal` | `manage.sh normal` — switch back to the full render |
+| `reset-config` | `manage.sh reset-config` — back up the current `config.sh` and restore every switch to its documented default |
 
 ## Changing a setting
 
@@ -142,8 +155,11 @@ When the user asks to turn part of the status line off (or back on):
    else silently falls back to the default, so stick to `1`/`0`.
 3. **Do not restart Claude Code and do not reinstall.** The next render picks the
    change up. Say that.
-4. If the file does not exist, the status line was never installed — run the
-   install procedure above instead of creating it by hand.
+4. If the file does not exist and nothing is installed at all (`status --json`
+   shows `installed: false`), run the install procedure above. If the script
+   **is** installed but `config.sh` alone is missing (deleted by hand), any
+   `manage.sh lite`/`normal`/config-editing request recreates it with defaults
+   first — no reinstall needed for that.
 
 Map the request onto a key:
 
@@ -157,6 +173,7 @@ Map the request onto a key:
 | hide the skills / agents / mcp / tools counters | `SLB_SHOW_TOOL_COUNTS=0` |
 | bars are too wide / my terminal is narrow | `SLB_BAR_WIDTH=14` (clamped 10–60) |
 | minimal colors, fewer segments, no footer | `manage.sh lite` (sets `SLB_LITE_MODE=1`) |
+| "reset my config" / "undo everything, I messed it up" | `manage.sh reset-config` — backs up the current file, restores every default |
 
 The context / 5h / weekly bars and the model + directory header are **not**
 configurable. If the user asks to remove those, say so rather than inventing a

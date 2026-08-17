@@ -78,19 +78,53 @@ SLB_BAR_WIDTH=14
 SLB_SHOW_CPU=0
 ```
 
+## Resetting
+
+Hand-edited `config.sh` into a state you don't understand any more? Or it went
+missing entirely?
+
+```bash
+manage.sh reset-config
+```
+
+Backs up the current file (timestamped, under `<config-dir>/statusline-beauty/backups/`)
+if one exists, then rewrites every switch back to its documented default —
+including `SLB_LITE_MODE`, so this also switches back to normal mode. If
+`config.sh` doesn't exist at all (deleted by hand), `manage.sh lite`/`normal`
+recreate it with defaults on their own; `reset-config` is for when the file
+*is* there but wrong.
+
 ## Lite mode
 
 `SLB_LITE_MODE=1` (or `manage.sh lite`) switches to a minimal render:
 
+```
+📡 a9ccdf31 ⚡️ Sonnet 5 · 🧠 low (Thinking) $9.68 · 65 turns | 4 agents | 129 tools | 3 skills
+🌐 claude-statusline-beauty  |  🌿 main  |  ± 7 files  +1569 -132  |  6d
+🟢 ctx  [███░░░░░░░░░░░░░░░░░░░░░░]  15% · 145.5k/1M · 🌎
+🟢 5h   [█░░░░░░░░░░░░░░░░░░░░░░░░]   6% ⟳ 42m (10:30 PM) 🧩
+⚪ week [██████████████████████░░░]  89% ⟳ 7h 12m (05:00 AM)
+💲~$1571.97/mo · 1675.1Mtok/mo
+```
+
 - Every color collapses to gray, except the model name, which keeps the purple
   normal mode reserves for Sonnet — no rainbow gradient anywhere, on any model.
-- The `📀 cache HR` and `📈 avg/turn` segments are dropped from the stats line.
-- The skills/agents/mcp/tools counters and the `📅` month-to-date prefix lose
-  their emoji (the data stays, just as plain text).
+- Line 1: turns and, once `SLB_SHOW_TOOL_COUNTS` is on, agents/tools always
+  print — even at `0`. Skills/mcp print only when non-zero.
+- Line 2: branch always prints when `SLB_SHOW_GIT` is on, even outside a
+  repository — `🌿 (repo not found)` instead of dropping the whole line.
+- Reset countdowns on the 5h/week bars use `⟳` instead of "resets". The ctx
+  bar drops its in:/out: token figures in favor of a bare `🌎` marker (shown
+  only when there's session token data); the 5h bar always ends with `🧩`.
+- The `📀 cache HR` and `📈 avg/turn` segments stay dropped from anywhere.
+- Month-to-date cost/tokens gets its own trailing line (`💲…`) — but **only
+  for the session's first 10 turns**, then it stops printing.
 - The ctx/5h/week circles collapse to two states: 🟢 under 75%, ⚪ at 75%+.
-  The CPU/RAM bars keep the normal four-state circle regardless of this switch.
+  The CPU/RAM bars keep the normal four-state circle regardless of this
+  switch — but they don't render at all in lite mode either way.
 - The footer (version + `session_id`) and its separating blank line are
-  omitted entirely — output ends right after the last usage bar.
+  omitted entirely — output ends right after the last bar (or the month
+  line, when it's showing).
 
 Switch back with `SLB_LITE_MODE=0` or `manage.sh normal`. Everything else in
 this file (which segments show, bar width) still applies on top of lite mode.

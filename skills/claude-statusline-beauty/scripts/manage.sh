@@ -410,8 +410,12 @@ write_marker() {
   } > "$MARKER.tmp.$$" && mv -f "$MARKER.tmp.$$" "$MARKER"
 }
 
-write_default_config() {
-  [ -e "$CONFIG_FILE" ] && return 0
+# Overwrites $CONFIG_FILE unconditionally with the documented defaults —
+# callers that must not clobber an existing file (write_default_config) check
+# for one first; callers that explicitly want a reset (cmd_reset_config) back
+# it up first instead. Kept as one heredoc so the two paths can never drift
+# out of sync with each other.
+_write_default_config_template() {
   cat > "$CONFIG_FILE" <<'CFG'
 # statusline-beauty configuration
 #
@@ -457,6 +461,11 @@ SLB_LITE_MODE=0
 CFG
 }
 
+write_default_config() {
+  [ -e "$CONFIG_FILE" ] && return 0
+  _write_default_config_template
+}
+
 # Rewrite a single KEY=VALUE line in config.sh in place, preserving every
 # comment and every other key. awk over the file rather than `sed -i`: BSD and
 # GNU sed take incompatible -i syntax, which is exactly the portability trap
@@ -465,7 +474,12 @@ CFG
 # a config a concurrent render might be reading.
 set_config_value() {
   local key=$1 value=$2
-  [ -f "$CONFIG_FILE" ] || { err "not installed — run 'manage.sh install' first"; return 1; }
+  # config.sh is only ever missing if the user (or a "reset config") deleted
+  # it by hand — the script itself is still installed. Recreate it with
+  # defaults rather than erroring, so `lite`/`normal` work right after a
+  # reset instead of demanding a full reinstall for one file.
+  [ -f "$CONFIG_FILE" ] || write_default_config
+  [ -f "$CONFIG_FILE" ] || { err "could not create $CONFIG_FILE"; return 1; }
   awk -v k="$key" -v v="$value" '
     $0 ~ "^" k "=" { print k "=" v; done=1; next }
     { print }
@@ -474,14 +488,34 @@ set_config_value() {
 }
 
 cmd_lite() {
+  read_marker || { err "not installed — run 'manage.sh install' first"; return 1; }
   set_config_value SLB_LITE_MODE 1 || return 1
   ok "lite mode enabled — takes effect on the next render"
   say "  ${D}back to normal any time: manage.sh normal${N}"
 }
 
 cmd_normal() {
+  read_marker || { err "not installed — run 'manage.sh install' first"; return 1; }
   set_config_value SLB_LITE_MODE 0 || return 1
   ok "normal mode enabled — takes effect on the next render"
+}
+
+# Back up whatever config.sh currently has (if anything) and overwrite it with
+# the documented defaults — the "start over" escape hatch for a config a user
+# has hand-edited into a state they no longer understand. Unlike
+# set_config_value's auto-recreate (which only fires when the file is
+# entirely missing), this always backs up first: the file being present but
+# wrong is exactly the case a silent overwrite would make unrecoverable.
+cmd_reset_config() {
+  read_marker || { err "not installed — run 'manage.sh install' first"; return 1; }
+  mkdir -p "$BACKUP_DIR" 2>/dev/null
+  if [ -f "$CONFIG_FILE" ]; then
+    local backup; backup=$(unique_path "$BACKUP_DIR/config.sh.$(stamp)")
+    cp "$CONFIG_FILE" "$backup" 2>/dev/null && \
+      say "  ${D}previous config backed up to $backup${N}"
+  fi
+  _write_default_config_template
+  ok "config.sh reset to defaults — takes effect on the next render"
 }
 
 prune_backups() {
@@ -846,6 +880,7 @@ manage.sh — install, update and inspect statusline-beauty.
   manage.sh render-demo          render the status line from a fixture
   manage.sh lite                 switch to the minimal, low-color render
   manage.sh normal               switch back to the full render
+  manage.sh reset-config         back up config.sh and restore every default
 
   --force             overwrite a conflicting statusLine / bypass the check cache
   --no-update-check   install the bundled copy without contacting GitHub
@@ -859,7 +894,7 @@ USAGE
 CMD=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    status|install|update|doctor|uninstall|render-demo|lite|normal) [ -z "$CMD" ] && CMD="$1" ;;
+    status|install|update|doctor|uninstall|render-demo|lite|normal|reset-config) [ -z "$CMD" ] && CMD="$1" ;;
     --json)             JSON_OUT=1 ;;
     --force|-f)         FORCE=1 ;;
     --no-update-check)  DO_UPDATE_CHECK=0 ;;
@@ -872,13 +907,14 @@ done
 [ -z "$CMD" ] && CMD="status"
 
 case "$CMD" in
-  status)      cmd_status ;;
-  install)     cmd_install ;;
-  update)      cmd_update ;;
-  doctor)      cmd_doctor ;;
-  uninstall)   cmd_uninstall ;;
-  render-demo) cmd_render_demo ;;
-  lite)        cmd_lite ;;
-  normal)      cmd_normal ;;
-  *)           usage; exit 2 ;;
+  status)       cmd_status ;;
+  install)      cmd_install ;;
+  update)       cmd_update ;;
+  doctor)       cmd_doctor ;;
+  uninstall)    cmd_uninstall ;;
+  render-demo)  cmd_render_demo ;;
+  lite)         cmd_lite ;;
+  normal)       cmd_normal ;;
+  reset-config) cmd_reset_config ;;
+  *)            usage; exit 2 ;;
 esac

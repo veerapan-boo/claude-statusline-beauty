@@ -4,6 +4,44 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-08-18
+
+### Changed
+- **Lite mode redesigned to two header lines instead of two-and-a-half.**
+  Line 1 is now `session_id` + model + effort/thinking + session cost + turns
+  + agents/tools (always shown once `SLB_SHOW_TOOL_COUNTS` is on, even at `0`)
+  + skills/mcp (shown only when non-zero). Line 2 is folder + git — branch
+  always prints when `SLB_SHOW_GIT` is on, even outside a repository, where
+  it now shows `🌿 (repo not found)` instead of dropping the whole line.
+  Reset countdowns on the 5h/week bars use `⟳` instead of "resets"; the ctx
+  bar drops its in:/out: token numbers for a bare `🌎` marker (shown only
+  with session token data), and the 5h bar always ends with `🧩`. Month-to-date
+  cost/tokens moved to its own trailing `💲…` line — shown only for the
+  session's first 10 turns, then it stops printing. Normal mode is untouched.
+
+### Added
+- **`manage.sh reset-config`.** Backs up the current `config.sh` (timestamped,
+  under `backups/`) if one exists, then rewrites every switch back to its
+  documented default — the escape hatch for a config hand-edited into an
+  unrecognizable state. Distinct from the auto-recreate in the fix below:
+  that one only fires when the file is missing entirely; this one is for when
+  it's present but wrong, so it always backs up first rather than overwriting
+  silently.
+
+### Fixed
+- **`manage.sh lite`/`normal` failed with "not installed" if `config.sh` had
+  been deleted by hand**, even though the status line script itself was still
+  installed and working. `set_config_value()` now recreates `config.sh` with
+  defaults before applying the switch, instead of requiring a full reinstall
+  to get one file back.
+
+### Documentation
+- Added an **Example prompts** table to README.md and SKILL.md (right after
+  the install instructions) spelling out what four common requests actually
+  do under the hood: first install, plain update, "update and change mode" —
+  including why that second one can silently fall back to guessing if the
+  skill checkout is stale — and switching mode alone.
+
 ## [1.2.0] - 2026-08-17
 
 ### Added
