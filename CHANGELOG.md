@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-08-18
+
+### Fixed
+- **`manage.sh reset-config` reset `SLB_LITE_MODE` back to normal**, silently
+  bouncing a user out of lite mode as a side effect of fixing an unrelated
+  switch. Mode is now read before the reset and carried over — every other
+  switch still goes back to its documented default, but lite/normal is
+  treated as a deliberate ongoing choice, not stray config to reset.
+
+### Documentation
+- **Restructured README.md into a basic/advanced split.** Install, the two
+  render modes, and a plain-language "just tell Claude what you want" table
+  now come first, in simple terms. Everything else — full switch tables, the
+  Configure section, `manage.sh` internals, privacy details, maintainer
+  notes — moved below a `## Advanced` divider so first-time readers aren't
+  hit with config internals before they've even installed it.
+
 ## [1.2.1] - 2026-08-18
 
 ### Changed

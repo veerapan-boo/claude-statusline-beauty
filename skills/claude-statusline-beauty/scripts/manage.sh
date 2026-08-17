@@ -509,13 +509,25 @@ cmd_normal() {
 cmd_reset_config() {
   read_marker || { err "not installed — run 'manage.sh install' first"; return 1; }
   mkdir -p "$BACKUP_DIR" 2>/dev/null
+  # Lite/normal is a deliberate, ongoing choice, not a fat-fingered value —
+  # a "reset my broken config" request shouldn't silently kick the user back
+  # to normal mode as a side effect. Every OTHER switch really does go back
+  # to its documented default; this one is carried across the reset instead.
+  local prev_lite=0
   if [ -f "$CONFIG_FILE" ]; then
     local backup; backup=$(unique_path "$BACKUP_DIR/config.sh.$(stamp)")
     cp "$CONFIG_FILE" "$backup" 2>/dev/null && \
       say "  ${D}previous config backed up to $backup${N}"
+    local raw; raw=$(awk -F= '/^SLB_LITE_MODE[ \t]*=/{print $2; f=1} END{if(!f) print ""}' "$CONFIG_FILE" 2>/dev/null | tail -1 | tr -d '[:space:]\r')
+    case "$raw" in 1|true|yes|on|TRUE|True|YES|Yes|ON|On) prev_lite=1 ;; esac
   fi
   _write_default_config_template
-  ok "config.sh reset to defaults — takes effect on the next render"
+  if (( prev_lite )); then
+    set_config_value SLB_LITE_MODE 1
+    ok "config.sh reset to defaults (lite mode kept on) — takes effect on the next render"
+  else
+    ok "config.sh reset to defaults — takes effect on the next render"
+  fi
 }
 
 prune_backups() {

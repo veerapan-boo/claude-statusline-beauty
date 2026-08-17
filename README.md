@@ -16,65 +16,9 @@ packaged as an agent skill that installs, wires up and updates itself.
   Claude Code v2.1.220 (LTS)  ·  session_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
-- **Session and month-to-date cost** — live spend, plus the month so far,
-  accumulated from the figure Claude Code reports rather than re-priced from
-  tokens. Both the cost and the token count start from the day you install.
-- **Usage bars** — context window, 5-hour and weekly rate limits with reset
-  countdowns, CPU and RAM. The circle turns ⚪ / 🟡 / 🔴 as each one fills.
-- **Git state** — branch, worktree marker, ahead/behind, dirty file count, last
-  commit age. Hidden entirely outside a repository.
-- **Session analytics** — turns, cost per turn, cache hit rate, average tokens
-  per turn, skill/agent/MCP/tool counts across the session *and* its subagents.
-- **Footer** — the running Claude Code version, an `(LTS)` tag when it is the
-  latest published one, and the `session_id`.
-
-Every line can be switched off.
-
-## Modes
-
-Two modes ship. **Normal** (above) is the default — full color, every segment.
-**Lite** strips the decoration down for a plainer terminal:
-
-```
-📡 a9ccdf31 ⚡️ Sonnet 5 · 🧠 low (Thinking) $9.68 · 65 turns | 4 agents | 129 tools | 3 skills
-🌐 claude-statusline-beauty  |  🌿 main  |  ± 7 files  +1569 -132  |  6d
-🟢 ctx  [███░░░░░░░░░░░░░░░░░░░░░░]  15% · 145.5k/1M · 🌎
-🟢 5h   [█░░░░░░░░░░░░░░░░░░░░░░░░]   6% ⟳ 42m (10:30 PM) 🧩
-⚪ week [██████████████████████░░░]  89% ⟳ 7h 12m (05:00 AM)
-💲~$1571.97/mo · 1675.1Mtok/mo
-```
-
-Lite mode is a different layout, not just a recolored normal mode:
-
-- **Line 1**: the first 8 characters of `session_id`, model, effort/thinking,
-  session cost, turns — then agents/tools (always shown, even at `0`, once
-  `SLB_SHOW_TOOL_COUNTS` is on) and skills/mcp (shown only when non-zero, so an
-  idle counter doesn't clutter the line). Ahead/behind is dropped.
-- **Line 2**: folder, then git. Branch always prints when `SLB_SHOW_GIT` is on
-  — even outside a repository, where it shows `🌿 (repo not found)` instead of
-  dropping the whole line the way normal mode does.
-- **Lines 3-5**: the ctx/5h/week bars — reset countdowns use `⟳` instead of
-  "resets", and the ctx/5h lines end with a bare 🌎/🧩 marker (ctx's in/out
-  token figures are dropped in lite mode; 🌎 only appears when there's session
-  token data to point at, 🧩 always).
-- **Line 6** (optional): month-to-date cost/tokens, `💲…` — but **only for the
-  session's first 10 turns**. After that it's assumed you've already seen it,
-  and it stops printing to keep every later render shorter.
-- Every color collapses to gray, except the model name — that keeps the purple
-  normal mode uses for Sonnet. No rainbow gradient on any model.
-- The ctx/5h/week circles collapse to two states: 🟢 under 75%, ⚪ at 75%+.
-- **CPU and RAM bars are not shown at all in lite mode.**
-- The footer (version + `session_id`) and its blank spacer line are gone —
-  output ends right after the last bar (or the month line, when it's showing).
-
-Switch modes any time, no restart needed:
-
-```
-/claude-statusline-beauty lite     # minimal render
-/claude-statusline-beauty normal   # back to full
-```
-
-or directly: `bash ~/.claude/skills/claude-statusline-beauty/scripts/manage.sh lite`.
+Shows your model, session and month-to-date cost, git branch and changes,
+and usage bars for context/5-hour/weekly limits plus CPU and RAM. Every line
+can be turned off if you don't want it.
 
 ## Install
 
@@ -88,52 +32,59 @@ Then, inside Claude Code:
 /claude-statusline-beauty
 ```
 
-That checks for a newer release, installs the script to
-`~/.claude/statusline-beauty/`, and wires up `~/.claude/settings.json`.
+That's it — it checks for the latest version, installs it, and wires itself
+up automatically. If you already have a different status line configured,
+it stops and asks before overwriting anything.
 
-<details>
-<summary>What <code>-g -a claude-code</code> does, and when to drop it</summary>
+## Two looks: Normal and Lite
 
-Both flags remove a question the CLI would otherwise have to guess or ask:
+**Normal** (shown above) is the default — full color, every segment.
 
-| Flag | Effect |
-|---|---|
-| `-g` | install user-level, into `~/.claude/skills/`, instead of scoping the skill to whatever directory you happen to be in |
-| `-a claude-code` | install for Claude Code only, rather than every agent the CLI detects on the machine |
+**Lite** is a plainer, mostly-gray render for a quieter terminal:
 
-Without them, `npx skills add` installs **into the directory you run it from** and
-prompts for the agent — fine from `$HOME`, surprising from inside a project,
-where the skill ends up available only in that project.
-
-Drop `-g` on purpose if that project scoping is what you want:
-
-```bash
-npx skills add https://github.com/veerapan-boo/claude-statusline-beauty -a claude-code
+```
+📡 a9ccdf31 ⚡️ Sonnet 5 · 🧠 low (Thinking) $9.68 · 65 turns | 4 agents | 129 tools | 3 skills
+🌐 claude-statusline-beauty  |  🌿 main  |  ± 7 files  +1569 -132  |  6d
+🟢 ctx  [███░░░░░░░░░░░░░░░░░░░░░░]  15% · 145.5k/1M · 🌎
+🟢 5h   [█░░░░░░░░░░░░░░░░░░░░░░░░]   6% ⟳ 42m (10:30 PM) 🧩
+⚪ week [██████████████████████░░░]  89% ⟳ 7h 12m (05:00 AM)
+💲~$1571.97/mo · 1675.1Mtok/mo
 ```
 
-Either way **the status line itself is installed machine-wide**, because it lives
-in `~/.claude/statusline-beauty/` and is wired into `~/.claude/settings.json`.
-Only the `/claude-statusline-beauty` command follows the skill's scope.
+Switch any time, no restart needed:
 
-</details>
+```
+/claude-statusline-beauty lite     # minimal render
+/claude-statusline-beauty normal   # back to full
+```
 
-**If you already have a status line configured**, the installer stops and shows
-you what is there rather than overwriting it. Re-run with `--force` — or just
-tell Claude to go ahead — and your old setting is backed up first.
+## Just tell Claude what you want
 
-## Example prompts
+You don't need to remember any commands — say it in plain language and Claude
+handles the rest:
 
-Four different requests, four different things happen under the hood:
-
-| You say | What Claude does |
+| You say | What happens |
 |---|---|
-| `/claude-statusline-beauty` (first time, nothing installed yet) | `manage.sh install` — checks the latest GitHub release, installs it (or the skill's own bundled copy if that's newer), writes a default `config.sh`, wires `settings.json`. |
-| "update the status line" | `manage.sh update` — pulls whatever the **latest published release** is and overwrites the installed script only. `config.sh` and `settings.json` are untouched, so any mode/switches you'd set stay exactly as they were. |
-| "update and switch to lite mode" | Two steps back to back: update (above), then `manage.sh lite`. The second step only works correctly if the release you just updated to actually ships lite mode — if you're on an older skill checkout that predates a feature, Claude won't know that feature exists yet and may guess at the closest thing in its (stale) instructions instead. Re-running `npx skills add` (or just asking to update again) pulls the current `SKILL.md` and fixes that. |
-| "switch to lite mode" / "back to normal" | `manage.sh lite` / `manage.sh normal` — flips `SLB_LITE_MODE` in the existing `config.sh` in place. No download, no reinstall, no restart; the next render just picks it up. If `config.sh` was deleted or never existed, this recreates it with defaults first rather than erroring. |
-| "reset my config, I messed it up" | `manage.sh reset-config` — backs up the current `config.sh` (timestamped, under `backups/`) and rewrites every switch back to its documented default. |
+| *(nothing installed yet, just ask)* | Installs and wires everything up. |
+| "update the status line" | Pulls the latest version. Your mode and settings stay exactly as they were. |
+| "switch to lite mode" / "back to normal" | Switches instantly — no restart. |
+| "turn off the CPU and RAM bars" | Hides just those two lines. |
+| "hide my session id, I'm screen sharing" | Turns off the footer. |
+| "the status line is slow" | Turns off the heaviest checks first. |
+| "reset my config, I messed it up" | Backs up your settings and restores every default — keeps whichever mode (lite/normal) you were using. |
 
-## Requirements
+If something looks broken, just describe what you see — "the status line is
+blank" or "it's showing weird characters" both work.
+
+---
+
+## Advanced
+
+Everything below is for people who want to tweak switches by hand, understand
+what data the status line touches, or maintain this repo. You don't need any
+of it to use the tool day to day — the table above covers that.
+
+### Requirements
 
 | | |
 |---|---|
@@ -167,7 +118,84 @@ is 3.2 and too old; the script finds the Homebrew one and re-execs itself under
 it, so nothing in `settings.json` or `PATH` needs changing. See
 [platform notes](skills/claude-statusline-beauty/references/platform-notes.md).
 
-## Configure
+<details>
+<summary>What <code>-g -a claude-code</code> does, and when to drop it</summary>
+
+Both flags remove a question the CLI would otherwise have to guess or ask:
+
+| Flag | Effect |
+|---|---|
+| `-g` | install user-level, into `~/.claude/skills/`, instead of scoping the skill to whatever directory you happen to be in |
+| `-a claude-code` | install for Claude Code only, rather than every agent the CLI detects on the machine |
+
+Without them, `npx skills add` installs **into the directory you run it from** and
+prompts for the agent — fine from `$HOME`, surprising from inside a project,
+where the skill ends up available only in that project.
+
+Drop `-g` on purpose if that project scoping is what you want:
+
+```bash
+npx skills add https://github.com/veerapan-boo/claude-statusline-beauty -a claude-code
+```
+
+Either way **the status line itself is installed machine-wide**, because it lives
+in `~/.claude/statusline-beauty/` and is wired into `~/.claude/settings.json`.
+Only the `/claude-statusline-beauty` command follows the skill's scope.
+
+</details>
+
+**If you already have a status line configured**, the installer stops and shows
+you what is there rather than overwriting it. Re-run with `--force` — or just
+tell Claude to go ahead — and your old setting is backed up first.
+
+### What each feature does
+
+- **Session and month-to-date cost** — live spend, plus the month so far,
+  accumulated from the figure Claude Code reports rather than re-priced from
+  tokens. Both the cost and the token count start from the day you install.
+- **Usage bars** — context window, 5-hour and weekly rate limits with reset
+  countdowns, CPU and RAM. The circle turns ⚪ / 🟡 / 🔴 as each one fills.
+- **Git state** — branch, worktree marker, ahead/behind, dirty file count, last
+  commit age. Hidden entirely outside a repository.
+- **Session analytics** — turns, cost per turn, cache hit rate, average tokens
+  per turn, skill/agent/MCP/tool counts across the session *and* its subagents.
+- **Footer** — the running Claude Code version, an `(LTS)` tag when it is the
+  latest published one, and the `session_id`.
+
+Lite mode is a different layout, not just a recolored normal mode:
+
+- **Line 1**: the first 8 characters of `session_id`, model, effort/thinking,
+  session cost, turns — then agents/tools (always shown, even at `0`, once
+  `SLB_SHOW_TOOL_COUNTS` is on) and skills/mcp (shown only when non-zero, so an
+  idle counter doesn't clutter the line). Ahead/behind is dropped.
+- **Line 2**: folder, then git. Branch always prints when `SLB_SHOW_GIT` is on
+  — even outside a repository, where it shows `🌿 (repo not found)` instead of
+  dropping the whole line the way normal mode does.
+- **Lines 3-5**: the ctx/5h/week bars — reset countdowns use `⟳` instead of
+  "resets", and the ctx/5h lines end with a bare 🌎/🧩 marker (ctx's in/out
+  token figures are dropped in lite mode; 🌎 only appears when there's session
+  token data to point at, 🧩 always).
+- **Line 6** (optional): month-to-date cost/tokens, `💲…` — but **only for the
+  session's first 10 turns**. After that it's assumed you've already seen it,
+  and it stops printing to keep every later render shorter.
+- Every color collapses to gray, except the model name — that keeps the purple
+  normal mode uses for Sonnet. No rainbow gradient on any model.
+- The ctx/5h/week circles collapse to two states: 🟢 under 75%, ⚪ at 75%+.
+- **CPU and RAM bars are not shown at all in lite mode.**
+- The footer (version + `session_id`) and its blank spacer line are gone —
+  output ends right after the last bar (or the month line, when it's showing).
+
+### Every request, and what actually runs
+
+| You say | Command | Notes |
+|---|---|---|
+| `/claude-statusline-beauty` (nothing installed yet) | `manage.sh install` | Checks the latest GitHub release, installs it (or the skill's own bundled copy if that's newer), writes a default `config.sh`, wires `settings.json`. |
+| "update the status line" | `manage.sh update` | Pulls whatever the **latest published release** is and overwrites the installed script only. `config.sh` and `settings.json` are untouched, so your mode and every switch survive exactly as they were. |
+| "update and switch to lite mode" | update, then `manage.sh lite` | Two steps back to back. The second only works correctly if the release you just updated to actually ships lite mode — on a skill checkout that predates a feature, Claude won't know it exists and may guess at the closest thing in its (stale) instructions instead. Re-running `npx skills add` (or asking to update again) pulls the current `SKILL.md` and fixes that. |
+| "switch to lite mode" / "back to normal" | `manage.sh lite` / `manage.sh normal` | Flips `SLB_LITE_MODE` in the existing `config.sh` in place. No download, no reinstall, no restart. Recreates `config.sh` with defaults first if it was deleted, instead of erroring. |
+| "reset my config, I messed it up" | `manage.sh reset-config` | Backs up the current `config.sh` (timestamped, under `backups/`) and rewrites every switch back to its documented default — **except** `SLB_LITE_MODE`, which is carried over as-is, so a reset can't silently bounce you out of lite mode. |
+
+### Configure
 
 `~/.claude/statusline-beauty/config.sh` is created on install and never
 overwritten. Changes apply on the next render.
@@ -181,7 +209,7 @@ SLB_SHOW_RAM=1
 SLB_CHECK_LATEST=1      # the only network call the status line makes
 SLB_SHOW_FOOTER=1       # version + session_id — turn off when screen sharing
 SLB_BAR_WIDTH=25
-SLB_LITE_MODE=0         # 1 = minimal render, see "Modes" above
+SLB_LITE_MODE=0         # 1 = minimal render, see "Two looks" above
 ```
 
 Editing that file by hand always works. But you can also just say what you want
@@ -198,13 +226,13 @@ line maps to:
 | "the bars are too wide for my terminal" | `SLB_BAR_WIDTH=14` |
 | "put the CPU bar back" | `SLB_SHOW_CPU=1` |
 | "switch to lite mode" / "less color, fewer segments" | `manage.sh lite` (`SLB_LITE_MODE=1`) |
-| "reset my config back to defaults" | `manage.sh reset-config` — backs up the old file first |
+| "reset my config back to defaults" | `manage.sh reset-config` — backs up the old file first, keeps your mode |
 
 No restart — the change shows up on the next render.
 
 Full reference: [configuration.md](skills/claude-statusline-beauty/references/configuration.md).
 
-## Manage it directly
+### Manage it directly
 
 The skill is a thin wrapper around one script:
 
@@ -218,7 +246,7 @@ bash $S doctor          # dependency and environment report
 bash $S render-demo     # preview without restarting Claude Code
 bash $S lite            # switch to the minimal, low-color render
 bash $S normal          # switch back to the full render
-bash $S reset-config    # back up config.sh, restore every default
+bash $S reset-config    # back up config.sh, restore every default (keeps your mode)
 bash $S uninstall       # restore the previous statusLine setting
 ```
 
@@ -230,7 +258,7 @@ version stays. The previous five versions are kept in
 
 Something wrong? [troubleshooting.md](skills/claude-statusline-beauty/references/troubleshooting.md).
 
-## Privacy
+### Privacy
 
 The status line prints only the **basename** of your working directory, never the
 full path. The footer contains your `session_id` — set `SLB_SHOW_FOOTER=0` before
@@ -251,7 +279,7 @@ The only outbound network call is `npm view @anthropic-ai/claude-code version`,
 at most once every 6 hours, used for the `(LTS)` tag. `SLB_CHECK_LATEST=0`
 removes it. Update checks run only when you invoke the skill.
 
-## For maintainers
+### For maintainers
 
 Cutting a release:
 
