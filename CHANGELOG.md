@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-08-29
+
+### Fixed
+- **`monthly_tokens()` forked `mkdir`, `rm`, and `rmdir` on every single
+  render**, completely bypassing the 60-second result memo added in 1.6.0
+  — they ran before the memo check, not after, so the memo only ever saved
+  the expensive transcript-scanning work, not these three. One of the two
+  (`rm -f .result.cache`, `rmdir .warm.lock`) was a one-time migration
+  cleanup from a pre-bucketing cache layout that, on any already-migrated
+  machine, is a permanent no-op that still forked forever. `monthly_cost()`
+  had the same unconditional `mkdir` shape. All four (plus five smaller
+  cache-write `mkdir`s elsewhere in the file) now check `[ -d ]`/`[ -e ]`
+  first — bash builtins, no fork — and only shell out when something
+  actually needs creating or removing. Measured 2 fewer forks per render in
+  the warm steady state (confirmed via fork-counting, not just timing —
+  wall-clock noise at this scale otherwise swallows a 2-fork difference).
+  Output is unchanged; this is pure overhead removal.
+
 ## [1.6.0] - 2026-08-29
 
 ### Changed

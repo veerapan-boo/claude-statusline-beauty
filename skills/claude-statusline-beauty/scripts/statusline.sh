@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.6.0
+# statusline-beauty-version: 1.6.1
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -616,7 +616,7 @@ session_tokens() {
   fi
   local s_in s_out s_cr
   read -r s_in s_out s_cr <<< "$(_sum_tokens "$tp")"
-  mkdir -p -m 700 "$SLB_CACHE_ROOT" "$dir" 2>/dev/null && printf '%s %s %s %s\n' "$sig" "$s_in" "$s_out" "$s_cr" > "$cache" 2>/dev/null
+  { [ -d "$dir" ] || mkdir -p -m 700 "$SLB_CACHE_ROOT" "$dir" 2>/dev/null; } && printf '%s %s %s %s\n' "$sig" "$s_in" "$s_out" "$s_cr" > "$cache" 2>/dev/null
   echo "$s_in $s_out $s_cr"
 }
 
@@ -680,7 +680,7 @@ last_agent_skill() {
     [ "$c_sig" = "$sig" ] && { echo "$c_val"; return; }   # cache hit
   fi
   local val; val=$(_last_agent_skill "$tp" "${subs[@]}")
-  mkdir -p -m 700 "$SLB_CACHE_ROOT" "$dir" 2>/dev/null && printf '%s %s\n' "$sig" "$val" > "$cache" 2>/dev/null
+  { [ -d "$dir" ] || mkdir -p -m 700 "$SLB_CACHE_ROOT" "$dir" 2>/dev/null; } && printf '%s %s\n' "$sig" "$val" > "$cache" 2>/dev/null
   echo "$val"
 }
 
@@ -734,7 +734,11 @@ monthly_cost() {
   (( ${SLB_DEMO:-0} )) && { printf '0'; return; }
   local month; printf -v month '%(%Y-%m)T' -1
   local month_dir="$SLB_COST_DIR/$month"
-  mkdir -p -m 700 "$SLB_COST_DIR" "$month_dir" 2>/dev/null || { printf '0'; return; }
+  # `mkdir -p` is idempotent but still forks every time regardless of whether
+  # the dir already exists — and this function runs on EVERY render, not just
+  # on cache misses. `[ -d ]` is a builtin, so this skips that fork on every
+  # render after the very first one this month.
+  [ -d "$month_dir" ] || mkdir -p -m 700 "$SLB_COST_DIR" "$month_dir" 2>/dev/null || { printf '0'; return; }
 
   # Session ids are UUIDs from Claude Code, but they land in a filename, so
   # refuse anything that is not one rather than trusting the input.
@@ -790,7 +794,11 @@ monthly_tokens() {
   local month; printf -v month '%(%Y-%m)T' -1
   local bucket="$month.v3"
   local MONTHLY_CACHE_DIR="$MONTHLY_CACHE_ROOT/$bucket"
-  mkdir -p -m 700 "$SLB_CACHE_ROOT" "$MONTHLY_CACHE_ROOT" "$MONTHLY_CACHE_DIR" 2>/dev/null
+  # This whole function — including this mkdir — runs before the result-memo
+  # check below, so a naive unconditional `mkdir -p` would fork on EVERY
+  # render regardless of the memo, defeating its purpose. `[ -d ]` is a
+  # builtin: skip the fork once this month's bucket already exists.
+  [ -d "$MONTHLY_CACHE_DIR" ] || mkdir -p -m 700 "$SLB_CACHE_ROOT" "$MONTHLY_CACHE_ROOT" "$MONTHLY_CACHE_DIR" 2>/dev/null
 
   # Retire everything that is not the current bucket: past months, superseded
   # cache formats, and the flat *.cache files written before month scoping
@@ -807,9 +815,14 @@ monthly_tokens() {
       *.cache)                          rm -f  -- "$e" 2>/dev/null ;;
     esac
   done
-  # Dotfiles the glob above cannot see, also from the flat layout.
-  rm -f    -- "$MONTHLY_CACHE_ROOT/.result.cache" 2>/dev/null
-  rmdir    -- "$MONTHLY_CACHE_ROOT/.warm.lock"    2>/dev/null
+  # Dotfiles the glob above cannot see, also from the flat layout. These are
+  # a ONE-TIME migration away from a pre-bucketing layout — on any machine
+  # that has already migrated (essentially everyone, by now) neither path
+  # exists any more, so the blind `rm`/`rmdir` forked every render forever
+  # for a permanent no-op. `[ -e ]`/`[ -d ]` are builtins: only fork when
+  # there is actually something left to remove.
+  [ -e "$MONTHLY_CACHE_ROOT/.result.cache" ] && rm -f -- "$MONTHLY_CACHE_ROOT/.result.cache" 2>/dev/null
+  [ -d "$MONTHLY_CACHE_ROOT/.warm.lock" ]    && rmdir -- "$MONTHLY_CACHE_ROOT/.warm.lock"    2>/dev/null
 
   # ── Result memo: reuse the last fully-warmed line for MONTHLY_RESULT_TTL ──
   # printf %(%s)T is a bash builtin (>=4.2) — no `date` fork on the hot path.
@@ -1216,7 +1229,7 @@ _git_stats() {
   fi
   line=$(_git_stats_raw "$cwd")
   printf -v _now_s '%(%s)T' -1
-  mkdir -p -m 700 "$SLB_CACHE_ROOT" "$SLB_CACHE_DIR" 2>/dev/null &&
+  { [ -d "$SLB_CACHE_DIR" ] || mkdir -p -m 700 "$SLB_CACHE_ROOT" "$SLB_CACHE_DIR" 2>/dev/null; } &&
     printf '%s|%s\n' "$_now_s" "$line" > "$cache.tmp.$$" 2>/dev/null &&
     mv -f "$cache.tmp.$$" "$cache" 2>/dev/null
   printf '%s' "$line"
@@ -1318,7 +1331,7 @@ if (( SLB_SHOW_RAM )); then
       ram_total_bytes=$(sysctl -n hw.memsize 2>/dev/null)
       [[ "$ram_total_bytes" =~ ^[0-9]+$ ]] || ram_total_bytes=0
       (( ram_total_bytes > 0 )) &&
-        mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null &&
+        { [ -d "$sys_cache_dir" ] || mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null; } &&
         printf '%s\n' "$ram_total_bytes" > "$ram_bytes_cache" 2>/dev/null
     fi
     read -r ram_total_mb ram_avail_mb <<< "$(vm_stat 2>/dev/null | awk -v total="$ram_total_bytes" '
@@ -1374,7 +1387,7 @@ if (( SLB_SHOW_RAM )); then
   fi
   if [ -z "$disk_free" ]; then
     disk_free=$(df -Pk / 2>/dev/null | awk 'NR==2{printf "%.0fG", $(NF-2)/1048576}')
-    [ -n "$disk_free" ] && { mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null
+    [ -n "$disk_free" ] && { [ -d "$sys_cache_dir" ] || mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null
       printf '%s %s\n' "$_now_s" "$disk_free" > "$disk_cache" 2>/dev/null; }
   fi
 fi
@@ -1390,7 +1403,7 @@ if (( SLB_SHOW_CPU )); then
     # and getconf is the POSIX one. Whichever answers first wins.
     cpu_cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null)
     [[ "$cpu_cores" =~ ^[0-9]+$ ]] || cpu_cores=1
-    mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null && printf '%s\n' "$cpu_cores" > "$nproc_cache" 2>/dev/null
+    { [ -d "$sys_cache_dir" ] || mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null; } && printf '%s\n' "$cpu_cores" > "$nproc_cache" 2>/dev/null
   fi
   # CPU % = 1-minute load average relative to core count (can exceed 100 when
   # overloaded; the bar itself clamps at 100 via to_int_pct). Read /proc/loadavg
