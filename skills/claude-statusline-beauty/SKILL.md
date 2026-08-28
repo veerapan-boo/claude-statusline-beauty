@@ -1,7 +1,7 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.2.4
+version: 1.3.0
 author: veerapan-boo
 license: MIT
 tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
@@ -195,9 +195,29 @@ Map the request onto a key:
 | "reset my config" / "undo everything, I messed it up" | `manage.sh reset-config` — backs up the current file, restores every default |
 
 The context / 5h / weekly bars and the model + directory header are **not**
-configurable. If the user asks to remove those, say so rather than inventing a
-key — an unknown key in `config.sh` is ignored silently, which would look like
-the request worked when it did not.
+configurable for *visibility* — that always renders. If the user asks to
+remove those, say so rather than inventing a key — an unknown key in
+`config.sh` is ignored silently, which would look like the request worked
+when it did not. Their **icons**, however, are configurable — see below.
+
+### Changing an emoji icon
+
+When the user asks to re-skin an icon ("change my Opus icon to 🐉", "make the
+git branch emoji a leaf"), edit or add the matching `SLB_EMOJI_*` line in
+`config.sh` — same file, same "edit in place, don't rewrite the whole file"
+rule as the switches above. Unlike the switches, the value is any single
+non-whitespace token (the emoji itself), not `1`/`0`.
+
+Full key list with defaults and where each renders:
+[references/configuration.md](references/configuration.md#emoji-icons). All
+of them are also listed commented-out at the bottom of the default
+`config.sh`, so uncommenting is enough if the user just wants to see what's
+available.
+
+A few keys are mode-specific (`_NORMAL` / `_LITE` suffix) because normal and
+lite mode already show a different default icon for that field — e.g.
+`SLB_EMOJI_GIT_BRANCH_NORMAL` vs `SLB_EMOJI_GIT_BRANCH_LITE`. If the user
+doesn't say which mode, ask, or set both if they clearly mean "everywhere."
 
 Each switch gates the underlying work, not just the display, so turning a line
 off is a real speedup. Full table with costs:

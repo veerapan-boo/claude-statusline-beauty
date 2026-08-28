@@ -47,6 +47,59 @@ SLB_SHOW_MONTHLY=0 bash ~/.claude/statusline-beauty/statusline.sh < fixture.json
 Each switch gates the *work*, not just the display: turning a line off stops the
 underlying commands from running at all.
 
+## Emoji icons
+
+Every decorative icon the status line prints (model, folder, git branch,
+ahead/behind, cost/month/turns/cache/avg, skills/agents/mcp/tools counters,
+fast-mode, session id) can be re-skinned with an `SLB_EMOJI_*` key — same
+`config.sh`, same "parsed not sourced" rules, same env-var-wins-over-file
+precedence as the switches above. The only difference: the value can be any
+single non-whitespace token (an emoji, not `1`/`0`), since that's what these
+keys hold.
+
+The four usage-bar status circles (🔴🟡⚪🟢) and the ⚠️ context-half warning
+are **not** on this list — they encode meaning by color/threshold, not
+identity, so they stay fixed.
+
+| Key | Default | Where it renders |
+|---|---|---|
+| `SLB_EMOJI_MODEL_OPUS` | `✨` | header / lite line 1 — Opus |
+| `SLB_EMOJI_MODEL_SONNET` | `⚡️` | header / lite line 1 — Sonnet |
+| `SLB_EMOJI_MODEL_OTHER` | `☄️` | header / lite line 1 — any other model |
+| `SLB_EMOJI_FOLDER_NORMAL` | `📁` | header — current directory (normal mode) |
+| `SLB_EMOJI_FOLDER_LITE` | `🌐` | lite line 2 — current directory |
+| `SLB_EMOJI_FAST` | `🚀` | header — fast-mode indicator |
+| `SLB_EMOJI_EFFORT` | `🧠` | header / lite line 1 — effort/thinking level |
+| `SLB_EMOJI_SKILLS` | `🧩` | header — skills counter |
+| `SLB_EMOJI_AGENTS` | `🤖` | header — agents counter |
+| `SLB_EMOJI_MCP` | `🔌` | header — mcp counter |
+| `SLB_EMOJI_TOOLS` | `🔧` | header — tools counter |
+| `SLB_EMOJI_COST` | `🌿` | stats line — session cost |
+| `SLB_EMOJI_MONTH_NORMAL` | `📅` | stats line — month-to-date cost |
+| `SLB_EMOJI_MONTH_LITE` | `💲` | lite mode's trailing month-to-date line |
+| `SLB_EMOJI_TURNS` | `♻️` | stats line — turn count |
+| `SLB_EMOJI_COST_PER_TURN` | `💲` | stats line — cost per turn |
+| `SLB_EMOJI_CACHE` | `📀` | stats line — cache hit rate |
+| `SLB_EMOJI_AVG_TOKENS` | `📈` | stats line — avg tokens/turn |
+| `SLB_EMOJI_GIT_BRANCH_NORMAL` | `🌐` | git line — branch (normal mode) |
+| `SLB_EMOJI_GIT_BRANCH_LITE` | `🌿` | lite line 2 — branch |
+| `SLB_EMOJI_AHEAD` | `↑` | git line — commits ahead |
+| `SLB_EMOJI_BEHIND` | `↓` | git line — commits behind |
+| `SLB_EMOJI_SESSION_ID` | `📡` | lite line 1 only — short session id |
+
+`_NORMAL`/`_LITE` pairs exist because normal and lite mode already use a
+different default icon for that field — setting one never affects the other
+mode. Fields with a single key already use the same icon in both modes (or
+only appear in one), so there's nothing to split.
+
+```sh
+SLB_EMOJI_MODEL_OPUS=🐉
+SLB_EMOJI_COST=💵
+```
+
+All 20+ keys are listed, commented out with their defaults, at the bottom of
+the default `config.sh` — uncomment and edit any of them.
+
 ## Recipes
 
 **Make it as fast and quiet as possible** — no network, no month scan, no

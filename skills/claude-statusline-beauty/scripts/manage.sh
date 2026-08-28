@@ -570,6 +570,45 @@ SLB_BAR_WIDTH=25
 # Use `manage.sh lite` / `manage.sh normal` to flip this rather than editing
 # it by hand — see the "lite mode" section of the README.
 SLB_LITE_MODE=0
+
+# ── Emoji icons (optional) ──────────────────────────────────────────
+# Every icon below has a built-in default (shown here) and only needs a line
+# if you want to change it. Uncomment and edit any of these to re-skin the
+# status line. Values must be a single non-whitespace token (no quotes needed).
+# Full reference: references/configuration.md.
+
+# Model icons — header (and lite mode's line 1)
+# SLB_EMOJI_MODEL_OPUS=✨
+# SLB_EMOJI_MODEL_SONNET=⚡️
+# SLB_EMOJI_MODEL_OTHER=☄️
+
+# Header line: folder, fast mode, effort/thinking, skills/agents/mcp/tools
+# SLB_EMOJI_FOLDER_NORMAL=📁
+# SLB_EMOJI_FOLDER_LITE=🌐
+# SLB_EMOJI_FAST=🚀
+# SLB_EMOJI_EFFORT=🧠
+# SLB_EMOJI_SKILLS=🧩
+# SLB_EMOJI_AGENTS=🤖
+# SLB_EMOJI_MCP=🔌
+# SLB_EMOJI_TOOLS=🔧
+
+# Stats line: cost, month-to-date, turns, cost/turn, cache hit rate, avg tokens
+# SLB_EMOJI_COST=🌿
+# SLB_EMOJI_MONTH_NORMAL=📅
+# SLB_EMOJI_MONTH_LITE=💲
+# SLB_EMOJI_TURNS=♻️
+# SLB_EMOJI_COST_PER_TURN=💲
+# SLB_EMOJI_CACHE=📀
+# SLB_EMOJI_AVG_TOKENS=📈
+
+# Git line: branch, ahead, behind
+# SLB_EMOJI_GIT_BRANCH_NORMAL=🌐
+# SLB_EMOJI_GIT_BRANCH_LITE=🌿
+# SLB_EMOJI_AHEAD=↑
+# SLB_EMOJI_BEHIND=↓
+
+# Lite mode only: session id (line 1)
+# SLB_EMOJI_SESSION_ID=📡
 CFG
 }
 

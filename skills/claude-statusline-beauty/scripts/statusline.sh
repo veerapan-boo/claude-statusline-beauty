@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.2.4
+# statusline-beauty-version: 1.3.0
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -205,8 +205,11 @@ _local_midnight_epoch() {
 # saved by a Windows editor carries CRLF line endings; sourcing it would set
 # every value to "1<CR>" and blow up bash arithmetic downstream — the same class
 # of bug the jq shim above exists to prevent. So: only `KEY=VALUE` lines whose
-# key is a known SLB_* switch are honoured, values are restricted to a safe
-# character set, and nothing in the file is ever executed.
+# key is a known SLB_* switch are honoured, and nothing in the file is ever
+# executed. Value validation is per-key-family below: the show/hide switches
+# and bar width stay restricted to a narrow safe charset, while SLB_EMOJI_*
+# values (icon overrides) are allowed any non-whitespace UTF-8, since an emoji
+# doesn't fit [A-Za-z0-9._-].
 # An SLB_* variable already present in the environment wins over the file, which
 # makes one-off overrides (and the installer's smoke test) possible.
 _slb_cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/statusline-beauty/config.sh"
@@ -217,14 +220,21 @@ if [ -r "$_slb_cfg" ]; then
     case "$_line" in ''|'#'*) continue ;; esac
     # Spaces around `=` are accepted even though a real shell would reject them —
     # this file is parsed, not sourced, and a silently-ignored line is worse than
-    # a lenient one.
-    [[ "$_line" =~ ^(SLB_[A-Z0-9_]+)[[:space:]]*=[[:space:]]*([A-Za-z0-9._-]+)[[:space:]]*$ ]] || continue
+    # a lenient one. Value charset is validated per key family below, not here.
+    [[ "$_line" =~ ^(SLB_[A-Z0-9_]+)[[:space:]]*=[[:space:]]*(.*)$ ]] || continue
     _k=${BASH_REMATCH[1]}; _v=${BASH_REMATCH[2]}
-    # Whitelist as a padded string so the list stays on one line — a backslash
-    # continuation inside a case pattern list would smuggle blanks into the
-    # patterns and silently stop matching.
-    case " SLB_SHOW_MONTHLY SLB_SHOW_GIT SLB_SHOW_TOOL_COUNTS SLB_SHOW_CPU SLB_SHOW_RAM SLB_CHECK_LATEST SLB_SHOW_FOOTER SLB_BAR_WIDTH SLB_LITE_MODE " in
-      *" $_k "*) ;;
+    _v="${_v%"${_v##*[![:space:]]}"}"               # strip trailing blanks
+    case "$_k" in
+      # Icon overrides: any single non-whitespace token (an emoji is rarely
+      # one byte, so no narrower charset works here). One pattern covers every
+      # SLB_EMOJI_* key — no per-key whitelist entry needed as more are added.
+      SLB_EMOJI_*)
+        [ -n "$_v" ] && [[ "$_v" != *[[:space:]]* ]] || continue
+        ;;
+      # Show/hide switches and bar width — narrow charset, unchanged from before.
+      SLB_SHOW_MONTHLY|SLB_SHOW_GIT|SLB_SHOW_TOOL_COUNTS|SLB_SHOW_CPU|SLB_SHOW_RAM|SLB_CHECK_LATEST|SLB_SHOW_FOOTER|SLB_BAR_WIDTH|SLB_LITE_MODE)
+        [[ "$_v" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+        ;;
       *) continue ;;                                # unknown key — ignore
     esac
     # `${!k+set}` is true even for an empty env value, so an explicit
@@ -1364,6 +1374,16 @@ if (( SLB_SHOW_MONTHLY )); then
   fi
 fi
 
+# Model icon — computed once and shared by normal mode's header and lite
+# mode's line 1, so an SLB_EMOJI_MODEL_* override applies in both renders
+# instead of only the one that happened to hardcode it.
+model_icon="${SLB_EMOJI_MODEL_OTHER:-☄️}"
+if [[ "$model" == *[Oo]pus* ]]; then
+  model_icon="${SLB_EMOJI_MODEL_OPUS:-✨}"
+elif [[ "$model" == *[Ss]onnet* ]]; then
+  model_icon="${SLB_EMOJI_MODEL_SONNET:-⚡️}"
+fi
+
 # ── Line 1: header — parts collected, then joined with " | " ──────
 # Lite mode assembles its own line1/line2/line3 further below instead of
 # populating hp[] — the field-to-line mapping is different enough (session id
@@ -1374,14 +1394,14 @@ hp=()
 if (( SLB_LITE_MODE )); then
   :
 elif [[ "$model" == *[Oo]pus* ]]; then
-  # Opus gets a dragon icon ✨ + a rainbow name 🌈
-  hp+=("$(printf "${C_MODEL}✨ ${C_RESET}")$(rainbow "$model")")
+  # Opus gets a dragon icon + a rainbow name 🌈
+  hp+=("$(printf "${C_MODEL}%s ${C_RESET}" "$model_icon")$(rainbow "$model")")
 elif [[ "$model" == *[Ss]onnet* ]]; then
-  hp+=("$(printf "${C_MODEL_SONNET}⚡️ %s${C_RESET}" "$model")")
+  hp+=("$(printf "${C_MODEL_SONNET}%s %s${C_RESET}" "$model_icon" "$model")")
 else
-  hp+=("$(printf "${C_MODEL}☄️ %s${C_RESET}" "$model")")
+  hp+=("$(printf "${C_MODEL}%s %s${C_RESET}" "$model_icon" "$model")")
 fi
-(( ! SLB_LITE_MODE )) && [ -n "$short_cwd" ] && hp+=("$(printf "${C_PATH}📁 %s${C_RESET}" "$short_cwd")")
+(( ! SLB_LITE_MODE )) && [ -n "$short_cwd" ] && hp+=("$(printf "${C_PATH}%s %s${C_RESET}" "${SLB_EMOJI_FOLDER_NORMAL:-📁}" "$short_cwd")")
 
 # lines changed — session edit stats, appended straight onto the path entry
 # (not a new hp[] item) so no " | " separator is inserted before it. Not
@@ -1406,7 +1426,7 @@ if (( SLB_SHOW_GIT )); then
 fi
 
 # fast mode indicator — not in the lite-mode target layout
-(( ! SLB_LITE_MODE )) && [ "$fast_mode" = "true" ] && hp+=("$(printf "${C_MODEL}🚀 fast${C_RESET}")")
+(( ! SLB_LITE_MODE )) && [ "$fast_mode" = "true" ] && hp+=("$(printf "${C_MODEL}%s fast${C_RESET}" "${SLB_EMOJI_FAST:-🚀}")")
 
 # effort + thinking — 🧠 label, shown verbatim.
 #
@@ -1427,9 +1447,9 @@ if [ -n "$effort" ]; then
   if (( SLB_LITE_MODE )); then
     :   # appended onto lite mode's own line2 further below, not hp[]
   elif { [ "$effort" = "xhigh" ] || [ "$effort" = "max" ]; }; then
-    hp+=("$(printf "${C_EFRT}🧠 ${C_RESET}")$(rainbow "$efrt_label")")
+    hp+=("$(printf "${C_EFRT}%s ${C_RESET}" "${SLB_EMOJI_EFFORT:-🧠}")$(rainbow "$efrt_label")")
   else
-    hp+=("$(printf "${C_EFRT}🧠 %s${C_RESET}" "$efrt_label")")
+    hp+=("$(printf "${C_EFRT}%s %s${C_RESET}" "${SLB_EMOJI_EFFORT:-🧠}" "$efrt_label")")
   fi
 fi
 
@@ -1446,10 +1466,10 @@ if (( SLB_SHOW_TOOL_COUNTS )); then
   fi
 fi
 if (( ! SLB_LITE_MODE )) && { [ "$as_type" != "none" ] || (( tool_n > 0 || mcp_n > 0 )); }; then
-  hp+=("$(printf "${C_BAR}🧩 %s skills${C_RESET}" "$skill_n")")
-  hp+=("$(printf "${C_BAR}🤖 %s agents${C_RESET}" "$agent_n")")
-  hp+=("$(printf "${C_BAR}🔌 %s mcp${C_RESET}" "$mcp_n")")
-  hp+=("$(printf "${C_BAR}🔧 %s tools${C_RESET}" "$tool_n")")
+  hp+=("$(printf "${C_BAR}%s %s skills${C_RESET}" "${SLB_EMOJI_SKILLS:-🧩}" "$skill_n")")
+  hp+=("$(printf "${C_BAR}%s %s agents${C_RESET}" "${SLB_EMOJI_AGENTS:-🤖}" "$agent_n")")
+  hp+=("$(printf "${C_BAR}%s %s mcp${C_RESET}" "${SLB_EMOJI_MCP:-🔌}" "$mcp_n")")
+  hp+=("$(printf "${C_BAR}%s %s tools${C_RESET}" "${SLB_EMOJI_TOOLS:-🔧}" "$tool_n")")
 fi
 
 # session cost — computed here, emitted on Line 2 (🌿 $0.42)
@@ -1464,16 +1484,16 @@ fi
 hp_git=()
 if (( ! SLB_LITE_MODE )) && [ -n "$git_branch" ]; then
   if [ -n "$worktree" ]; then
-    hp_git+=("$(printf "🌐 ${C_ADD}(worktree)${C_RESET} ${C_GIT}%s${C_RESET}" "$git_branch")")
+    hp_git+=("$(printf "%s ${C_ADD}(worktree)${C_RESET} ${C_GIT}%s${C_RESET}" "${SLB_EMOJI_GIT_BRANCH_NORMAL:-🌐}" "$git_branch")")
   else
-    hp_git+=("$(printf "${C_GIT}🌐 %s${C_RESET}" "$git_branch")")
+    hp_git+=("$(printf "${C_GIT}%s %s${C_RESET}" "${SLB_EMOJI_GIT_BRANCH_NORMAL:-🌐}" "$git_branch")")
   fi
   # #11 ahead/behind
   if (( git_ahead > 0 || git_behind > 0 )); then
     ab=""
-    (( git_ahead  > 0 )) && ab="$(printf "${C_ADD}↑%d${C_RESET}" "$git_ahead")"
+    (( git_ahead  > 0 )) && ab="$(printf "${C_ADD}%s%d${C_RESET}" "${SLB_EMOJI_AHEAD:-↑}" "$git_ahead")"
     if (( git_behind > 0 )); then
-      ab="${ab:+$ab }$(printf "${C_DEL}↓%d${C_RESET}" "$git_behind")"
+      ab="${ab:+$ab }$(printf "${C_DEL}%s%d${C_RESET}" "${SLB_EMOJI_BEHIND:-↓}" "$git_behind")"
     fi
     hp_git+=("$ab")
   fi
@@ -1512,9 +1532,9 @@ if (( SLB_LITE_MODE )); then
   # SLB_SHOW_TOOL_COUNTS is on; skills/mcp print only when non-zero — a
   # session with no skill or MCP calls yet shouldn't clutter the line with
   # zeros for counters that may never fire.
-  line1="$(printf "${C_DIM}📡 %s${C_RESET}" "${session_id:0:8}")"
-  line1="${line1} $(printf "${C_MODEL}⚡️ %s${C_RESET}" "$model")"
-  [ -n "$effort" ] && line1="${line1} · $(printf "${C_DIM}🧠 %s${C_RESET}" "$efrt_label")"
+  line1="$(printf "${C_DIM}%s %s${C_RESET}" "${SLB_EMOJI_SESSION_ID:-📡}" "${session_id:0:8}")"
+  line1="${line1} $(printf "${C_MODEL}%s %s${C_RESET}" "$model_icon" "$model")"
+  [ -n "$effort" ] && line1="${line1} · $(printf "${C_DIM}%s %s${C_RESET}" "${SLB_EMOJI_EFFORT:-🧠}" "$efrt_label")"
   [ -n "$cost_fmt" ] && line1="${line1} $(printf "${C_DIM}\$%s${C_RESET}" "$cost_fmt")"
   line1="${line1} · $(printf "${C_DIM}%d turns${C_RESET}" "$turns")"
   if (( SLB_SHOW_TOOL_COUNTS )); then
@@ -1528,13 +1548,13 @@ if (( SLB_LITE_MODE )); then
   # ── Lite Line 2: folder, then git — branch always prints when
   # SLB_SHOW_GIT is on, even outside a repository (a placeholder rather
   # than dropping the whole line, unlike normal mode).
-  line2="$(printf "${C_DIM}🌐 %s${C_RESET}" "$short_cwd")"
+  line2="$(printf "${C_DIM}%s %s${C_RESET}" "${SLB_EMOJI_FOLDER_LITE:-🌐}" "$short_cwd")"
   if (( SLB_SHOW_GIT )); then
     if [ -n "$git_branch" ]; then
       if [ -n "$worktree" ]; then
-        line2="${line2}${sep}$(printf "${C_DIM}🌿 (worktree) %s${C_RESET}" "$git_branch")"
+        line2="${line2}${sep}$(printf "${C_DIM}%s (worktree) %s${C_RESET}" "${SLB_EMOJI_GIT_BRANCH_LITE:-🌿}" "$git_branch")"
       else
-        line2="${line2}${sep}$(printf "${C_DIM}🌿 %s${C_RESET}" "$git_branch")"
+        line2="${line2}${sep}$(printf "${C_DIM}%s %s${C_RESET}" "${SLB_EMOJI_GIT_BRANCH_LITE:-🌿}" "$git_branch")"
       fi
       changed=""
       (( git_dirty > 0 )) && changed="$(printf "${C_DIM}± %d files${C_RESET}" "$git_dirty")"
@@ -1545,7 +1565,7 @@ if (( SLB_LITE_MODE )); then
       [ -n "$changed" ] && line2="${line2}${sep}${changed}"
       [ -n "$git_last" ]  && line2="${line2}${sep}$(printf "${C_DIM}%s${C_RESET}" "$git_last")"
     else
-      line2="${line2}${sep}$(printf "${C_DIM}🌿 (repo not found)${C_RESET}")"
+      line2="${line2}${sep}$(printf "${C_DIM}%s (repo not found)${C_RESET}" "${SLB_EMOJI_GIT_BRANCH_LITE:-🌿}")"
     fi
   fi
   printf '%s\n' "$line2"
@@ -1559,12 +1579,12 @@ else
   # 🌿/📅 lead the line in bold vivid colors (gold/orange) so the two cost
   # figures stand out from the plain-white turn/cache/avg stats.
   hp2=()
-  [ -n "$cost_fmt" ]      && hp2+=("$(printf "${C_COST_HL}🌿 \$%s${C_RESET}" "$cost_fmt")")
-  [ -n "$month_fmt" ]     && hp2+=("$(printf "${C_MONTH_HL}📅 ~\$%s/mo · %stok/mo%s${C_RESET}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")")
-  (( turns > 0 ))         && hp2+=("$(printf "${C_BAR}♻️ %d turns${C_RESET}" "$turns")")
-  [ -n "$cost_per_turn" ] && hp2+=("$(printf "${C_BAR}💲 %s/turn${C_RESET}" "$cost_per_turn")")
-  [ -n "$cache_rate" ]    && hp2+=("$(printf "${C_BAR}📀 cache HR %d%%${C_RESET}" "$cache_rate")")
-  [ -n "$avg_tok" ]       && hp2+=("$(printf "${C_BAR}📈 avg ~%s/turn${C_RESET}" "$avg_tok")")
+  [ -n "$cost_fmt" ]      && hp2+=("$(printf "${C_COST_HL}%s \$%s${C_RESET}" "${SLB_EMOJI_COST:-🌿}" "$cost_fmt")")
+  [ -n "$month_fmt" ]     && hp2+=("$(printf "${C_MONTH_HL}%s ~\$%s/mo · %stok/mo%s${C_RESET}" "${SLB_EMOJI_MONTH_NORMAL:-📅}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix")")
+  (( turns > 0 ))         && hp2+=("$(printf "${C_BAR}%s %d turns${C_RESET}" "${SLB_EMOJI_TURNS:-♻️}" "$turns")")
+  [ -n "$cost_per_turn" ] && hp2+=("$(printf "${C_BAR}%s %s/turn${C_RESET}" "${SLB_EMOJI_COST_PER_TURN:-💲}" "$cost_per_turn")")
+  [ -n "$cache_rate" ]    && hp2+=("$(printf "${C_BAR}%s cache HR %d%%${C_RESET}" "${SLB_EMOJI_CACHE:-📀}" "$cache_rate")")
+  [ -n "$avg_tok" ]       && hp2+=("$(printf "${C_BAR}%s avg ~%s/turn${C_RESET}" "${SLB_EMOJI_AVG_TOKENS:-📈}" "$avg_tok")")
   if (( ${#hp2[@]} > 0 )); then
     header2="${hp2[0]}"
     for (( i = 1; i < ${#hp2[@]}; i++ )); do header2="${header2}${sep}${hp2[$i]}"; done
@@ -1632,7 +1652,7 @@ printf '\n'
 # early in a session (turns 0-10) — after that it's assumed the user has
 # already seen it and the line just adds clutter to every render.
 if (( SLB_LITE_MODE )) && [ -n "$month_fmt" ] && (( turns <= 10 )); then
-  printf "${C_DIM}💲~\$%s/mo · %stok/mo%s${C_RESET}\n" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix"
+  printf "${C_DIM}%s~\$%s/mo · %stok/mo%s${C_RESET}\n" "${SLB_EMOJI_MONTH_LITE:-💲}" "$month_cost_fmt" "$month_tok_h" "$month_warm_suffix"
 fi
 
 # ── RAM / CPU bars — same look as ctx/5h/week: colored circle + bar ─

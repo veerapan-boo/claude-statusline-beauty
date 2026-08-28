@@ -232,6 +232,21 @@ No restart — the change shows up on the next render.
 
 Full reference: [configuration.md](skills/claude-statusline-beauty/references/configuration.md).
 
+### Emoji icons
+
+Every decorative icon (model, folder, git branch, cost, counters, …) can be
+re-skinned the same way, with an `SLB_EMOJI_*` key:
+
+```sh
+SLB_EMOJI_SESSION_ID="📡"
+SLB_EMOJI_MODEL_OPUS="🐉"
+```
+
+All ~20 keys, with their defaults, are listed commented-out at the bottom of
+`config.sh` — uncomment and edit any of them, or just tell Claude what icon
+you want. Full list and where each one renders:
+[configuration.md#emoji-icons](skills/claude-statusline-beauty/references/configuration.md#emoji-icons).
+
 ### Manage it directly
 
 The skill is a thin wrapper around one script:
