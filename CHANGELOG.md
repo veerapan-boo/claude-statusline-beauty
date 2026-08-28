@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-29
+
+### Added
+- **`manage.sh update` now keeps `config.sh` itself current, not just the
+  script.** A file created before `SLB_EMOJI_*`/`SLB_EMOJI_STATUS_*` existed
+  had no way to show them — you had to go find the docs to even know they
+  were there. `update` now tracks a `# statusline-beauty-config-version:`
+  marker at the bottom of `config.sh` and appends whichever reference blocks
+  (commented out, with their defaults — identical text to a fresh install)
+  the file predates, then advances the marker. Every existing line — your
+  values, your comments, your hand edits — is left completely untouched;
+  this only ever adds what's missing. Runs automatically on every `update`,
+  even when the deployed script is already current, same as the existing
+  skill-package self-sync. Full reference:
+  [configuration.md#staying-current](skills/claude-statusline-beauty/references/configuration.md#staying-current).
+
+  **Same one-time bootstrap caveat as the skill-package self-sync**: this
+  only works once the *currently running* `manage.sh` already has the code
+  for it. On a checkout that predates this release, one `update` brings in
+  the new `manage.sh` (and thus the new logic) but doesn't apply it in that
+  same run; a second `update` right after does.
+
 ## [1.4.0] - 2026-08-29
 
 ### Added

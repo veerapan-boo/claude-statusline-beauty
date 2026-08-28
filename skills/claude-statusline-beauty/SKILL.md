@@ -1,7 +1,7 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.4.0
+version: 1.5.0
 author: veerapan-boo
 license: MIT
 tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
@@ -36,7 +36,7 @@ into one mental model, each has a different effect:
 | The user says | Run | Notes |
 |---|---|---|
 | `/claude-statusline-beauty` with nothing installed | `manage.sh install` | Checks the latest GitHub release first, so a fresh install lands on the newest version, not whatever this skill checkout happens to bundle. |
-| "update the status line" | `manage.sh update` | Pulls the **latest published release only** — never `main` directly (see Platform support / maintainer notes for why). Overwrites the installed script; `config.sh` and `settings.json` are untouched, so existing switches (including `SLB_LITE_MODE`) survive. **Also syncs the skill package itself** (this SKILL.md, this manage.sh, references/*.md) whenever `skill_package_stale` is true — one command, both halves. |
+| "update the status line" | `manage.sh update` | Pulls the **latest published release only** — never `main` directly (see Platform support / maintainer notes for why). Overwrites the installed script; every existing line in `config.sh` and `settings.json` is untouched, so existing switches (including `SLB_LITE_MODE`) and hand-set `SLB_EMOJI_*` values survive exactly as they were. **Also syncs the skill package itself** (this SKILL.md, this manage.sh, references/*.md) whenever `skill_package_stale` is true, and **appends any newly available config reference block** (e.g. `SLB_EMOJI_STATUS_*`) that the file predates — commented out, nothing active — so an older `config.sh` never falls behind the docs. One command, all three. |
 | "update and switch to lite mode" | `manage.sh update` then `manage.sh lite` | Two sequential steps, not one atomic command. Step 1 now syncs the skill package too (see above), so step 2 knows about `lite` as long as the skill package it's running from HAS this self-sync capability at all. If it doesn't — a checkout old enough to predate this feature entirely — `update` can't fetch code it has no way to run; tell the user to re-run `npx skills add` once to bootstrap onto a version that can self-sync from then on. |
 | "switch to lite mode" / "back to normal" | `manage.sh lite` / `manage.sh normal` | Only touches `SLB_LITE_MODE` in `config.sh`, in place. No download, no restart. Recreates `config.sh` with defaults first if it was deleted — don't tell the user to reinstall for this. |
 
@@ -162,8 +162,11 @@ call, not yours.
 ## Changing a setting
 
 Installation writes `<config-dir>/statusline-beauty/config.sh` — normally
-`~/.claude/statusline-beauty/config.sh` — once, and never overwrites it. Every
-switch lives there.
+`~/.claude/statusline-beauty/config.sh` — once, and never overwrites or
+removes a line from it. Every switch lives there. `manage.sh update` may
+*append* a reference block the file predates (see
+[Staying current](references/configuration.md#staying-current)) — commented
+out, nothing active — but an existing line is never touched.
 
 When the user asks to turn part of the status line off (or back on):
 

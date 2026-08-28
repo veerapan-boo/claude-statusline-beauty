@@ -1,8 +1,12 @@
 # Configuration
 
 Installation creates `<config-dir>/statusline-beauty/config.sh` — normally
-`~/.claude/statusline-beauty/config.sh` — and never overwrites it afterwards, so
-your edits survive every update.
+`~/.claude/statusline-beauty/config.sh` — and never overwrites or removes a
+line from it afterwards, so your edits survive every update. `manage.sh
+update` may *append* a newly available reference block (commented out, with
+its default) if the file predates that key family — see
+[Staying current](#staying-current) below — but it never touches a line that
+was already there.
 
 Changes apply on the **next render**. No restart is needed.
 
@@ -175,6 +179,20 @@ including `SLB_LITE_MODE`, so this also switches back to normal mode. If
 `config.sh` doesn't exist at all (deleted by hand), `manage.sh lite`/`normal`
 recreate it with defaults on their own; `reset-config` is for when the file
 *is* there but wrong.
+
+## Staying current
+
+A `config.sh` created before a key family existed (say, one from before
+`SLB_EMOJI_STATUS_*` was added) just never had it — there was nothing to
+show it. Rather than leaving that file permanently behind, `manage.sh
+update` checks for a `# statusline-beauty-config-version:` marker at the
+bottom of the file and appends whichever reference blocks are missing
+(commented out, with their defaults — identical text to what a fresh
+install gets), then updates the marker. Every line that was already there —
+your values, your comments, your hand edits — is left completely untouched;
+this only ever adds what's missing. It runs automatically on every `update`,
+even when the deployed script itself is already current, so a config.sh
+never quietly falls behind the docs.
 
 ## Lite mode
 

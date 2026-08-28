@@ -522,13 +522,17 @@ write_marker() {
   } > "$MARKER.tmp.$$" && mv -f "$MARKER.tmp.$$" "$MARKER"
 }
 
-# Overwrites $CONFIG_FILE unconditionally with the documented defaults —
-# callers that must not clobber an existing file (write_default_config) check
-# for one first; callers that explicitly want a reset (cmd_reset_config) back
-# it up first instead. Kept as one heredoc so the two paths can never drift
-# out of sync with each other.
-_write_default_config_template() {
-  cat > "$CONFIG_FILE" <<'CFG'
+# The template is composed from named blocks, one per config-schema
+# version, rather than one flat heredoc — sync_config_blocks() below appends
+# whichever blocks a pre-existing config.sh doesn't have yet, verbatim, so a
+# fresh install and an upgraded old config.sh always end up with identical
+# text for any given block. Bump CONFIG_SCHEMA_VERSION whenever a new block
+# is added, and never edit an existing block's content in place — that would
+# make an already-synced config.sh permanently out of sync with no way to
+# detect it. Add a new _CFG_BLOCK_* instead.
+CONFIG_SCHEMA_VERSION=3
+
+_CFG_BLOCK_BASE=$(cat <<'CFG'
 # statusline-beauty configuration
 #
 # This file is PARSED, not sourced: only `KEY=VALUE` lines using the keys below
@@ -570,7 +574,11 @@ SLB_BAR_WIDTH=25
 # Use `manage.sh lite` / `manage.sh normal` to flip this rather than editing
 # it by hand — see the "lite mode" section of the README.
 SLB_LITE_MODE=0
+CFG
+)
 
+# Schema version 2.
+_CFG_BLOCK_EMOJI=$(cat <<'CFG'
 # ── Emoji icons (optional) ──────────────────────────────────────────
 # Every icon below has a built-in default (shown here) and only needs a line
 # if you want to change it. Uncomment and edit any of these to re-skin the
@@ -609,7 +617,11 @@ SLB_LITE_MODE=0
 
 # Lite mode only: session id (line 1)
 # SLB_EMOJI_SESSION_ID=📡
+CFG
+)
 
+# Schema version 3.
+_CFG_BLOCK_EMOJI_STATUS=$(cat <<'CFG'
 # ── Status icons (optional) ──────────────────────────────────────────
 # SLB_EMOJI_STATUS_* is a separate namespace from SLB_EMOJI_* above: these
 # icons encode a color-coded threshold (danger/warn/ok) on the usage bars,
@@ -630,11 +642,51 @@ SLB_LITE_MODE=0
 # SLB_EMOJI_STATUS_LITE_CTX_MARKER=🌎
 # SLB_EMOJI_STATUS_LITE_5H_MARKER=🧩
 CFG
+)
+
+# Overwrites $CONFIG_FILE unconditionally with every documented block,
+# concatenated — callers that must not clobber an existing file
+# (write_default_config) check for one first; callers that explicitly want a
+# reset (cmd_reset_config) back it up first instead.
+_write_default_config_template() {
+  {
+    printf '%s\n' "$_CFG_BLOCK_BASE"
+    printf '\n%s\n' "$_CFG_BLOCK_EMOJI"
+    printf '\n%s\n' "$_CFG_BLOCK_EMOJI_STATUS"
+    printf '\n# statusline-beauty-config-version: %s (tracks which optional blocks above are present — leave this line alone; manage.sh update reads and rewrites it)\n' "$CONFIG_SCHEMA_VERSION"
+  } > "$CONFIG_FILE"
 }
 
 write_default_config() {
   [ -e "$CONFIG_FILE" ] && return 0
   _write_default_config_template
+}
+
+# A config.sh from before a given block existed just never got it — this
+# appends whichever blocks are missing (verbatim, same text a fresh install
+# gets) so upgrading never leaves the user hunting docs for keys their file
+# predates. Every existing line — values, comments, hand edits — is left
+# completely untouched; this only ever appends.
+sync_config_blocks() {
+  [ -f "$CONFIG_FILE" ] || return 0
+  local have
+  have=$(grep -m1 -E '^# statusline-beauty-config-version:' "$CONFIG_FILE" 2>/dev/null |
+         sed -E 's/^# statusline-beauty-config-version:[[:space:]]*([0-9]+).*/\1/')
+  [[ "$have" =~ ^[0-9]+$ ]] || have=1   # no marker at all predates this tracking — base only
+  (( have >= CONFIG_SCHEMA_VERSION )) && return 0
+  (( have < 2 )) && printf '\n%s\n' "$_CFG_BLOCK_EMOJI" >> "$CONFIG_FILE"
+  (( have < 3 )) && printf '\n%s\n' "$_CFG_BLOCK_EMOJI_STATUS" >> "$CONFIG_FILE"
+  # Replace the marker in place if one exists, else append a fresh one —
+  # same read-modify-write shape as set_config_value below.
+  if grep -qE '^# statusline-beauty-config-version:' "$CONFIG_FILE" 2>/dev/null; then
+    awk -v v="$CONFIG_SCHEMA_VERSION" '
+      /^# statusline-beauty-config-version:/ { print "# statusline-beauty-config-version: " v " (tracks which optional blocks above are present — leave this line alone; manage.sh update reads and rewrites it)"; next }
+      { print }
+    ' "$CONFIG_FILE" > "$CONFIG_FILE.tmp.$$" && mv -f "$CONFIG_FILE.tmp.$$" "$CONFIG_FILE"
+  else
+    printf '\n# statusline-beauty-config-version: %s (tracks which optional blocks above are present — leave this line alone; manage.sh update reads and rewrites it)\n' "$CONFIG_SCHEMA_VERSION" >> "$CONFIG_FILE"
+  fi
+  say "  ${D}config.sh: appended newly available emoji reference block(s) — commented out, nothing active changed${N}"
 }
 
 # Rewrite a single KEY=VALUE line in config.sh in place, preserving every
@@ -939,6 +991,10 @@ cmd_update() {
     say "  syncing skill package (SKILL.md, manage.sh, references) -> $LATEST_VERSION"
     sync_skill_package "$LATEST_REF" && pkg_synced=1
   fi
+  # Same reasoning as the skill-package sync above: a config.sh written by an
+  # older version is invisible to installed_version, and the "already up to
+  # date" short-circuit right below would otherwise skip it entirely.
+  sync_config_blocks
   if ! update_available && [ "$FORCE" != 1 ]; then
     if (( pkg_synced )); then
       ok "script already up to date ($INSTALLED_VERSION) — skill package synced"
