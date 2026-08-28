@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-08-29
+
+### Changed
+- **Cut per-render process-spawn overhead**, measured ~35% less CPU time in
+  the warm-cache steady state (a git repo + an active transcript — the
+  realistic case). Five independent fixes, none of which change what's
+  displayed:
+  - Total RAM (`sysctl -n hw.memsize`) is now cached forever, same pattern
+    already used for CPU core count — it never changes on a running
+    machine, only `vm_stat` (genuinely live) still runs every render.
+  - `_git_stats()` — the one subsystem with zero caching, 2 `git` spawns +
+    `awk` + `sed` on literally every render — now has a 5-second TTL memo
+    per directory. Claude Code re-renders the status line very frequently
+    (after most tool calls), often faster than a human could plausibly
+    change a working tree, so this eliminates the repeat spawns for
+    back-to-back renders while staying effectively live. See
+    [troubleshooting.md](skills/claude-statusline-beauty/references/troubleshooting.md#if-the-git-line-specifically-looks-stale)
+    for the (intentional) staleness trade-off.
+  - The month-to-date ledger's stale-marker cleanup (a `find -delete`) ran
+    on **every single render** regardless of any `SLB_SHOW_*` flag, for
+    housekeeping that only ever needs to happen occasionally — now
+    rate-limited to once a day.
+  - Session turn-count and first-timestamp extraction were 4 separate forks
+    (`grep`, `head`, `grep`, `cut`) over the same transcript file; now one
+    `awk` pass.
+  - `input=$(cat)` (reading stdin) replaced with a builtin `read` — one
+    fewer guaranteed fork on every render.
+- `manage.sh doctor` now reports an actual render time in milliseconds
+  (`EPOCHREALTIME`-based, no extra process spawn on bash 5+), so "is it
+  fast" is a number instead of a guess.
+- `references/troubleshooting.md`'s "slow, or flickers" list now also
+  mentions `SLB_SHOW_GIT`/`SLB_SHOW_RAM`/`SLB_SHOW_CPU` — real, previously
+  undocumented per-render costs (smaller than the top three, but real).
+
 ## [1.5.0] - 2026-08-29
 
 ### Added

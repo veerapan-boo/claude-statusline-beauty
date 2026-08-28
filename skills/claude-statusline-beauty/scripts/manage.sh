@@ -1069,6 +1069,35 @@ cmd_doctor() {
   else                                       warn "no statusLine configured in $SETTINGS"
   fi
   [ -r "$CONFIG_FILE" ] && ok "config: $CONFIG_FILE" || warn "no config file yet (created on install)"
+  say ""
+  say "${B}performance${N}"
+  # A render against the fixed fixture, same one render-demo uses, with the
+  # two heaviest optional paths forced off (same rationale as render-demo:
+  # keep this fast and offline, not a worst-case measurement). Gives an
+  # actual number instead of "does it feel slow" — see troubleshooting.md if
+  # it's high.
+  local perf_target="$INSTALLED_SCRIPT"
+  [ -r "$perf_target" ] || perf_target="$SCRIPT_DIR/statusline.sh"
+  if [ -r "$perf_target" ]; then
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+      # EPOCHREALTIME (bash 5+) is a builtin variable, not a spawned `date`,
+      # so timing this costs nothing beyond the render itself.
+      local t0 t1 t0_s t0_us t1_s t1_us ms
+      t0=$EPOCHREALTIME
+      printf '%s' "$SMOKE_INPUT" | SLB_DEMO=1 SLB_CHECK_LATEST=0 SLB_SHOW_MONTHLY=0 bash "$perf_target" >/dev/null 2>&1
+      t1=$EPOCHREALTIME
+      t0_s=${t0%.*}; t0_us=${t0#*.}; t1_s=${t1%.*}; t1_us=${t1#*.}
+      ms=$(( (t1_s - t0_s) * 1000 + (10#$t1_us - 10#$t0_us) / 1000 ))
+      ok "render time: ${ms}ms (SLB_SHOW_MONTHLY + SLB_CHECK_LATEST forced off for this test)"
+    else
+      # Older bash has no sub-second builtin clock; $SECONDS is always
+      # available but only 1s-resolution — still enough to catch the
+      # multi-second hangs troubleshooting.md is actually about.
+      SECONDS=0
+      printf '%s' "$SMOKE_INPUT" | SLB_DEMO=1 SLB_CHECK_LATEST=0 SLB_SHOW_MONTHLY=0 bash "$perf_target" >/dev/null 2>&1
+      warn "render time: ~${SECONDS}s (whole-second precision only — this bash predates EPOCHREALTIME)"
+    fi
+  fi
   if [ ${#WARNINGS[@]} -gt 0 ]; then
     say ""
     say "${B}notes${N}"

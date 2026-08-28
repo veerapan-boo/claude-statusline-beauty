@@ -64,10 +64,20 @@ The status line is killed by the host when it takes too long. In order of impact
 SLB_SHOW_MONTHLY=0      # by far the biggest win
 SLB_SHOW_TOOL_COUNTS=0  # skips scanning subagent transcripts
 SLB_CHECK_LATEST=0      # removes the only network call
+SLB_SHOW_GIT=0          # skips 2 git spawns + awk + sed every render
+SLB_SHOW_RAM=0          # macOS: skips a vm_stat spawn every render
+SLB_SHOW_CPU=0          # skips a load-average spawn every render
 ```
 
 `SLB_SHOW_MONTHLY` scans every transcript modified this month. It is cached and
 warms up over a few renders, but a machine with many long sessions pays for it.
+
+The last three are individually smaller, but real: unlike the first three,
+`git`/`vm_stat`/load-average genuinely can't be skipped on a cache hit — a
+5-second internal cache absorbs the git spawns on rapid back-to-back renders,
+but the very next render past that window (and RAM/CPU on every render, since
+free memory and load are live values) still pays for them. Worth trying if
+you're still on the edge after the first three.
 
 A warm render should take well under a second:
 
@@ -174,6 +184,16 @@ file on every render is pure waste.
 So a counter that looks one step behind is usually correct-as-of-the-last-tool-call
 rather than broken. Run any tool and it catches up. (`SLB_SHOW_TOOL_COUNTS=0`
 turns the whole segment, and its cost, off.)
+
+### If the *git line* specifically looks stale
+
+Branch, ahead/behind and dirty-file count are memoized for 5 seconds per
+directory — `git status`/`git log` are the one part of the render with no
+cheap "did anything change" signal to key a cache on, so a short flat TTL
+stands in for one instead. A file saved inside that 5-second window won't
+bump the dirty count until the render after it. This is deliberate — it
+trades an imperceptible amount of staleness for skipping 2 `git` spawns on
+every rapid re-render Claude Code triggers back-to-back — not a bug.
 
 Caches live under `${TMPDIR:-/tmp}/claude-statusline-beauty-$UID/cache/` and are
 safe to delete; they rebuild on the next render.

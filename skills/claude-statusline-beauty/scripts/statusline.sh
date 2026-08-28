@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.5.0
+# statusline-beauty-version: 1.6.0
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -270,7 +270,12 @@ case "${SLB_BAR_WIDTH-}" in ''|*[!0-9]*) SLB_BAR_WIDTH=25 ;; esac
 (( SLB_BAR_WIDTH < 10 )) && SLB_BAR_WIDTH=10
 (( SLB_BAR_WIDTH > 60 )) && SLB_BAR_WIDTH=60
 
-input=$(cat)
+# A builtin `read` instead of `cat` — one less fork on every render. `-d ''`
+# reads until a NUL byte or EOF; a JSON payload never contains a literal NUL,
+# so this slurps all of stdin exactly like `$(cat)` did. `read` returns
+# non-zero on hitting EOF without its delimiter, which is the expected/only
+# outcome here, hence `|| true`.
+IFS= read -r -d '' input || true
 
 # ── Extract every field in ONE jq pass ────────────────────────────
 # Was ~18 separate `echo | jq` spawns (~150ms). Now a single jq emits all
@@ -757,7 +762,20 @@ monthly_cost() {
   # markers are retired, and only when far older than any conceivable run:
   # losing one is harmless because a resumed run restarts its counter at zero,
   # which is exactly what a missing `.last` assumes.
-  find "$SLB_COST_DIR" -maxdepth 1 -name '*.last' -mtime +60 -delete 2>/dev/null
+  #
+  # This is pure housekeeping — it doesn't need a `find` fork on every single
+  # render just because monthly_cost() itself runs on every render
+  # (deliberately unconditional, so spend tracking never stops even with the
+  # display hidden). Rate-limit it to once a day via a stamp file, same
+  # TTL-marker idiom as disk_free.cache further down.
+  local prune_ttl=86400 prune_stamp="$SLB_COST_DIR/.prune.stamp" prune_last=0 _now_s
+  [ -r "$prune_stamp" ] && read -r prune_last < "$prune_stamp"
+  [[ "$prune_last" =~ ^[0-9]+$ ]] || prune_last=0
+  printf -v _now_s '%(%s)T' -1
+  if (( _now_s - prune_last >= prune_ttl )); then
+    find "$SLB_COST_DIR" -maxdepth 1 -name '*.last' -mtime +60 -delete 2>/dev/null
+    printf '%s\n' "$_now_s" > "$prune_stamp" 2>/dev/null
+  fi
 
   awk '{ t += $1 } END { printf "%.8f", t + 0 }' "$month_dir"/*.sum 2>/dev/null || printf '0'
 }
@@ -1151,7 +1169,7 @@ emit_bar() {
 # rev-list×2 + status (4 spawns) into one git + one awk. Outside a repo git
 # errors → empty → all-empty line (empty branch gates Line 3 off). A standalone
 # function so it can run as a background producer (see the parallel block below).
-_git_stats() {
+_git_stats_raw() {
   local cwd=$1 gb="" ga=0 gbh=0 gd=0 gl="" gv2
   [ -z "$cwd" ] && { printf '|0|0|0|'; return; }
   gv2=$(git -C "$cwd" status --porcelain=v2 --branch 2>/dev/null)
@@ -1170,6 +1188,38 @@ _git_stats() {
       | sed -E 's/ ago//; s/ (hours?)/h/; s/ (minutes?)/m/; s/ (days?)/d/; s/ (weeks?)/w/; s/ (months?)/mo/')
   fi
   printf '%s|%s|%s|%s|%s' "$gb" "$ga" "$gbh" "$gd" "$gl"
+}
+
+# Thin cache wrapper around _git_stats_raw(): the only heavy per-render
+# subsystem with no caching at all otherwise — 2 git spawns + awk + sed, every
+# render, whether or not the repo changed. Claude Code re-renders the status
+# line very frequently (after most tool calls), often faster than a human
+# could plausibly change a working tree, so a short TTL memo eliminates the
+# repeat forks for back-to-back renders while staying effectively live.
+# Keyed on $cwd (flattened the same way monthly_tokens() keys its per-file
+# cache: `${path//\//%}`, pure parameter expansion, no fork) so multiple
+# repos/worktrees each get their own entry.
+_git_stats() {
+  local cwd=$1
+  [ -z "$cwd" ] && { printf '|0|0|0|'; return; }
+  local ttl=5 key="${cwd//\//%}"
+  local cache="$SLB_CACHE_DIR/git-stats.$key.cache"
+  local ts gb ga gbh gd gl _now_s line
+  if [ -r "$cache" ]; then
+    IFS='|' read -r ts gb ga gbh gd gl < "$cache"
+    [[ "$ts" =~ ^[0-9]+$ ]] || ts=0
+    printf -v _now_s '%(%s)T' -1
+    if (( _now_s - ts < ttl )); then
+      printf '%s|%s|%s|%s|%s' "$gb" "$ga" "$gbh" "$gd" "$gl"
+      return
+    fi
+  fi
+  line=$(_git_stats_raw "$cwd")
+  printf -v _now_s '%(%s)T' -1
+  mkdir -p -m 700 "$SLB_CACHE_ROOT" "$SLB_CACHE_DIR" 2>/dev/null &&
+    printf '%s|%s\n' "$_now_s" "$line" > "$cache.tmp.$$" 2>/dev/null &&
+    mv -f "$cache.tmp.$$" "$cache" 2>/dev/null
+  printf '%s' "$line"
 }
 
 # ── Parallel producers (D) ────────────────────────────────────────
@@ -1212,13 +1262,16 @@ fi
 turns=0
 duration_str=""
 if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  # grep -c prints "0" AND exits 1 when there are no matches, so a `|| echo 0`
-  # fallback would append a SECOND "0" and make $turns the two-line string
-  # "0\n0", which then blows up every `(( turns > 0 ))` below. grep -c already
-  # emits a count on its own, so just default when it produces nothing at all.
-  turns=$(grep -c '"role":"assistant"' "$transcript" 2>/dev/null)
+  # Was grep -c (turns) + head|grep -o|cut (first timestamp) — 4 forks over the
+  # same file. One awk pass does both: counts assistant-role lines across the
+  # whole file, and pulls the timestamp value out of line 1 only, using the
+  # leftmost match exactly like grep -o's first hit did.
+  IFS='|' read -r turns first_ts < <(awk '
+    NR == 1 { if (match($0, /"timestamp":"[^"]*"/)) ts = substr($0, RSTART + 13, RLENGTH - 14) }
+    /"role":"assistant"/ { c++ }
+    END { printf "%d|%s", c + 0, ts }
+  ' "$transcript" 2>/dev/null)
   turns=${turns:-0}
-  first_ts=$(head -1 "$transcript" | grep -o '"timestamp":"[^"]*"' | cut -d'"' -f4)
   if [ -n "$first_ts" ]; then
     start_epoch=$(_iso_to_epoch "$first_ts" 2>/dev/null)
     if [ -n "$start_epoch" ]; then
@@ -1253,11 +1306,22 @@ if (( SLB_SHOW_RAM )); then
     # free + inactive + speculative + purgeable is the set the kernel can hand
     # to a new allocation without swapping, which is the same thing MemAvailable
     # means on Linux. Wired, active and compressed pages are the "used" side.
-    read -r ram_total_mb ram_avail_mb <<< "$( {
-      sysctl -n hw.memsize 2>/dev/null
-      vm_stat 2>/dev/null
-    } | awk '
-      NR == 1                       { total = $1 }
+    #
+    # Total physical RAM never changes on a running machine — same reasoning
+    # as the cpu_cores/nproc cache below, applied to `sysctl -n hw.memsize`.
+    # Only `vm_stat` (genuinely live: free/inactive/speculative/purgeable
+    # pages) needs to run every render.
+    ram_total_bytes=""
+    ram_bytes_cache="$sys_cache_dir/ram_total.cache"
+    [ -r "$ram_bytes_cache" ] && read -r ram_total_bytes < "$ram_bytes_cache"
+    if ! [[ "$ram_total_bytes" =~ ^[0-9]+$ ]] || (( ram_total_bytes < 1 )); then
+      ram_total_bytes=$(sysctl -n hw.memsize 2>/dev/null)
+      [[ "$ram_total_bytes" =~ ^[0-9]+$ ]] || ram_total_bytes=0
+      (( ram_total_bytes > 0 )) &&
+        mkdir -p -m 700 "$SLB_CACHE_ROOT" "$sys_cache_dir" 2>/dev/null &&
+        printf '%s\n' "$ram_total_bytes" > "$ram_bytes_cache" 2>/dev/null
+    fi
+    read -r ram_total_mb ram_avail_mb <<< "$(vm_stat 2>/dev/null | awk -v total="$ram_total_bytes" '
       /page size of/                { for (i = 1; i <= NF; i++) if ($i == "of") ps = $(i+1) }
       /^Pages free:/                { f = $3 }
       /^Pages inactive:/            { n = $3 }
