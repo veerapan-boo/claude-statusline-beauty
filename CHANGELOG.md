@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-29
+
+### Added
+- **Every decorative emoji icon is now configurable** via a new `SLB_EMOJI_*`
+  key family — model, folder, git branch, ahead/behind, cost/month/turns/
+  cache/avg tokens, skills/agents/mcp/tools counters, fast-mode, and lite
+  mode's session-id, 23 keys in all. Same `config.sh`, same "parsed not
+  sourced" rules, same env-var-wins-over-file precedence as the existing
+  `SLB_SHOW_*` switches — the only difference is the value can be any single
+  non-whitespace token (an emoji) instead of `1`/`0`. All keys are listed,
+  commented out with their defaults, at the bottom of the default
+  `config.sh`. Fields whose default icon already differs between normal and
+  lite mode (folder, git branch, month-to-date) get independent `_NORMAL`/
+  `_LITE` keys, so tuning one mode never moves the other. The four
+  usage-bar status circles and the context-half warning stay fixed — they
+  encode meaning by color/threshold, not identity. Full reference:
+  [configuration.md#emoji-icons](skills/claude-statusline-beauty/references/configuration.md#emoji-icons).
+
+### Fixed
+- **Lite mode's model icon was hardcoded to ⚡️** regardless of whether the
+  session was actually running Opus, Sonnet, or something else. It now picks
+  the icon by model type the same way normal mode does, so an
+  `SLB_EMOJI_MODEL_OPUS` override (or the default ✨/☄️) takes effect there
+  too.
+
 ## [1.2.4] - 2026-08-18
 
 ### Added
