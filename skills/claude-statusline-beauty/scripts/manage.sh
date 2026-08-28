@@ -609,6 +609,26 @@ SLB_LITE_MODE=0
 
 # Lite mode only: session id (line 1)
 # SLB_EMOJI_SESSION_ID=📡
+
+# ── Status icons (optional) ──────────────────────────────────────────
+# SLB_EMOJI_STATUS_* is a separate namespace from SLB_EMOJI_* above: these
+# icons encode a color-coded threshold (danger/warn/ok) on the usage bars,
+# not just a decorative identity, but they're just as re-skinnable.
+# _WHITE and _GREEN are shared by the ctx/5h/week circles in both normal and
+# lite mode — same glyph, same meaning, in both renders.
+
+# ctx/5h/week/CPU/RAM usage circles
+# SLB_EMOJI_STATUS_CIRCLE_RED=🔴
+# SLB_EMOJI_STATUS_CIRCLE_YELLOW=🟡
+# SLB_EMOJI_STATUS_CIRCLE_WHITE=⚪
+# SLB_EMOJI_STATUS_CIRCLE_GREEN=🟢
+
+# Context window past 50% warning (normal mode)
+# SLB_EMOJI_STATUS_CTX_WARNING=⚠️
+
+# Lite mode only: bare markers on the ctx/5h bar lines
+# SLB_EMOJI_STATUS_LITE_CTX_MARKER=🌎
+# SLB_EMOJI_STATUS_LITE_5H_MARKER=🧩
 CFG
 }
 

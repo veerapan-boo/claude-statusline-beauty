@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.3.0
+# statusline-beauty-version: 1.4.0
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -1019,13 +1019,18 @@ monthly_tokens() {
   echo "$out_line"
 }
 
-# Circle emoji by usage: 0-25 green, 25-50 white, 50-75 yellow, 75-100 red
+# Circle emoji by usage: 0-25 green, 25-50 white, 50-75 yellow, 75-100 red.
+# These are SLB_EMOJI_STATUS_* (not SLB_EMOJI_*) — a deliberately separate
+# namespace from the decorative icons above, since these encode a
+# color-coded threshold (danger/warn/ok), not just an identity. WHITE/GREEN
+# are shared with pct_circle_lite() below, which reuses the same two glyphs
+# for the same meaning.
 pct_circle() {
   local p=$1
-  if   (( p >= 75 )); then printf '🔴'
-  elif (( p >= 50 )); then printf '🟡'
-  elif (( p >= 25 )); then printf '⚪'
-  else                     printf '🟢'
+  if   (( p >= 75 )); then printf '%s' "${SLB_EMOJI_STATUS_CIRCLE_RED:-🔴}"
+  elif (( p >= 50 )); then printf '%s' "${SLB_EMOJI_STATUS_CIRCLE_YELLOW:-🟡}"
+  elif (( p >= 25 )); then printf '%s' "${SLB_EMOJI_STATUS_CIRCLE_WHITE:-⚪}"
+  else                     printf '%s' "${SLB_EMOJI_STATUS_CIRCLE_GREEN:-🟢}"
   fi
 }
 
@@ -1034,7 +1039,9 @@ pct_circle() {
 # mode — this is a deliberate ctx/5h/week-only swap, not a global replacement.
 pct_circle_lite() {
   local p=$1
-  if (( p >= 75 )); then printf '⚪'; else printf '🟢'; fi
+  if (( p >= 75 )); then printf '%s' "${SLB_EMOJI_STATUS_CIRCLE_WHITE:-⚪}"
+  else                   printf '%s' "${SLB_EMOJI_STATUS_CIRCLE_GREEN:-🟢}"
+  fi
 }
 
 # Pick bar color by usage: <75 white, 75-99 yellow, 100 red
@@ -1631,7 +1638,7 @@ fi
 ctx_warn=""
 if [[ "$ctx_tok" =~ ^[0-9]+$ ]] && [[ "$ctx_size" =~ ^[0-9]+$ ]] && (( ctx_size > 0 )); then
   ctx_half=$(( ctx_size / 2 ))
-  (( ctx_tok >= ctx_half )) && ctx_warn=" ⚠️ $(humanize_tokens "$ctx_half")+"
+  (( ctx_tok >= ctx_half )) && ctx_warn=" ${SLB_EMOJI_STATUS_CTX_WARNING:-⚠️} $(humanize_tokens "$ctx_half")+"
 fi
 
 rate_circle_fn=pct_circle
@@ -1640,10 +1647,10 @@ emit_bar "ctx"  "$ctx_pct"       ""            "$ctx_tokens" "$ctx_warn" "$rate_
 # Lite mode's ctx/5h lines end with a bare marker emoji instead of the in:/out:
 # figures dropped above — 🌎 only when there's actual session-token data to
 # point at, 🧩 unconditionally (5h has no equivalent per-turn figure to gate on).
-(( SLB_LITE_MODE )) && (( ${sum_in:-0} > 0 || ${sum_out:-0} > 0 )) && printf " ${C_DIM}· 🌎${C_RESET}"
+(( SLB_LITE_MODE )) && (( ${sum_in:-0} > 0 || ${sum_out:-0} > 0 )) && printf " ${C_DIM}· %s${C_RESET}" "${SLB_EMOJI_STATUS_LITE_CTX_MARKER:-🌎}"
 printf '\n'
 emit_bar "5h"   "${five_pct:-0}"  "$five_reset" "" "" "$rate_circle_fn"
-(( SLB_LITE_MODE )) && printf " ${C_DIM}🧩${C_RESET}"
+(( SLB_LITE_MODE )) && printf " ${C_DIM}%s${C_RESET}" "${SLB_EMOJI_STATUS_LITE_5H_MARKER:-🧩}"
 printf '\n'
 emit_bar "week" "${week_pct:-0}"  "$week_reset" "" "" "$rate_circle_fn"
 printf '\n'

@@ -57,9 +57,10 @@ precedence as the switches above. The only difference: the value can be any
 single non-whitespace token (an emoji, not `1`/`0`), since that's what these
 keys hold.
 
-The four usage-bar status circles (🔴🟡⚪🟢) and the ⚠️ context-half warning
-are **not** on this list — they encode meaning by color/threshold, not
-identity, so they stay fixed.
+The four usage-bar status circles (🔴🟡⚪🟢), the ⚠️ context-half warning, and
+the two lite-mode bar markers (🌎🧩) are **not** on this list — they're a
+separate `SLB_EMOJI_STATUS_*` namespace, see [below](#status-icons), since
+they encode meaning by color/threshold rather than pure identity.
 
 | Key | Default | Where it renders |
 |---|---|---|
@@ -97,8 +98,36 @@ SLB_EMOJI_MODEL_OPUS=🐉
 SLB_EMOJI_COST=💵
 ```
 
-All 20+ keys are listed, commented out with their defaults, at the bottom of
+All 23 keys are listed, commented out with their defaults, at the bottom of
 the default `config.sh` — uncomment and edit any of them.
+
+## Status icons
+
+A deliberately separate key family from `SLB_EMOJI_*` above —
+`SLB_EMOJI_STATUS_*` — for the icons that encode a color-coded
+danger/warn/ok threshold on the usage bars, not just a decorative identity.
+Same `config.sh`, same parsing rules, same env-var-wins-over-file precedence;
+kept as its own namespace so it's never ambiguous which set an icon belongs
+to when re-skinning.
+
+| Key | Default | Where it renders |
+|---|---|---|
+| `SLB_EMOJI_STATUS_CIRCLE_RED` | `🔴` | ctx/5h/week/CPU/RAM circle at ≥75% usage (normal mode only) |
+| `SLB_EMOJI_STATUS_CIRCLE_YELLOW` | `🟡` | ctx/5h/week/CPU/RAM circle at 50–74% (normal mode only) |
+| `SLB_EMOJI_STATUS_CIRCLE_WHITE` | `⚪` | circle at 25–74% (normal) / ≥75% (lite ctx/5h/week) — shared between modes, same meaning |
+| `SLB_EMOJI_STATUS_CIRCLE_GREEN` | `🟢` | circle under the warn threshold — shared between modes, same meaning |
+| `SLB_EMOJI_STATUS_CTX_WARNING` | `⚠️` | context line — shown once usage passes 50% of the window (normal mode only) |
+| `SLB_EMOJI_STATUS_LITE_CTX_MARKER` | `🌎` | lite mode only — bare marker on the ctx bar line |
+| `SLB_EMOJI_STATUS_LITE_5H_MARKER` | `🧩` | lite mode only — bare marker on the 5h bar line |
+
+`CIRCLE_RED`/`CIRCLE_YELLOW` only ever appear in normal mode's four-state
+circle (lite mode's ctx/5h/week circle only has two states); CPU/RAM keep
+the four-state circle in both modes.
+
+```sh
+SLB_EMOJI_STATUS_CIRCLE_RED=🟥
+SLB_EMOJI_STATUS_CTX_WARNING=🚨
+```
 
 ## Recipes
 

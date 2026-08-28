@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-29
+
+### Added
+- **The remaining hardcoded icons are now configurable too**, via a new
+  `SLB_EMOJI_STATUS_*` key family — deliberately separate from `SLB_EMOJI_*`
+  since these encode a color-coded danger/warn/ok threshold on the usage
+  bars rather than pure decoration: the four circle states
+  (`CIRCLE_RED`/`CIRCLE_YELLOW`/`CIRCLE_WHITE`/`CIRCLE_GREEN`), the
+  context-half `CTX_WARNING`, and lite mode's two bar markers
+  (`LITE_CTX_MARKER`/`LITE_5H_MARKER`). Same `config.sh`, same parsing and
+  env-var-wins-over-file rules as every other `SLB_EMOJI_*` key. With this,
+  no icon in the status line is hardcoded and unconfigurable any more — only
+  `SLB_SHOW_*` visibility and the bar fill/empty characters (`█`/`░`) are
+  not. Full reference:
+  [configuration.md#status-icons](skills/claude-statusline-beauty/references/configuration.md#status-icons).
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

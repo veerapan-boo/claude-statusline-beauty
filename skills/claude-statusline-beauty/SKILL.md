@@ -1,7 +1,7 @@
 ---
 name: claude-statusline-beauty
 description: Install, update and troubleshoot the statusline-beauty status line for Claude Code — a multi-line status bar showing model, session and month-to-date cost, git state, and context / 5h / weekly / CPU / RAM usage bars. Trigger on /claude-statusline-beauty, or whenever the user asks to install, update, configure, disable, or fix their Claude Code status line, or asks why the status line is blank, slow, or showing broken characters.
-version: 1.3.0
+version: 1.4.0
 author: veerapan-boo
 license: MIT
 tags: [claude-code, statusline, installer, updater, self-update, linux, macos, windows, git-bash]
@@ -218,6 +218,15 @@ A few keys are mode-specific (`_NORMAL` / `_LITE` suffix) because normal and
 lite mode already show a different default icon for that field — e.g.
 `SLB_EMOJI_GIT_BRANCH_NORMAL` vs `SLB_EMOJI_GIT_BRANCH_LITE`. If the user
 doesn't say which mode, ask, or set both if they clearly mean "everywhere."
+
+The usage-bar status circles (🔴🟡⚪🟢), the ⚠️ context-half warning, and the
+two lite-mode bar markers (🌎🧩) are a **separate** `SLB_EMOJI_STATUS_*`
+family — same file, same rules, just a different prefix because these
+encode a color-coded threshold rather than pure decoration. Full list:
+[references/configuration.md](references/configuration.md#status-icons).
+Nothing in the status line is hardcoded and unconfigurable at the icon
+level any more — only the underlying `SLB_SHOW_*` visibility and the bar
+fill/empty characters (`█`/`░`) are not.
 
 Each switch gates the underlying work, not just the display, so turning a line
 off is a real speedup. Full table with costs:

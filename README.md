@@ -234,18 +234,26 @@ Full reference: [configuration.md](skills/claude-statusline-beauty/references/co
 
 ### Emoji icons
 
-Every decorative icon (model, folder, git branch, cost, counters, …) can be
-re-skinned the same way, with an `SLB_EMOJI_*` key:
+Nothing is hardcoded — every icon the status line prints can be re-skinned,
+the same way, in two key families:
 
 ```sh
-SLB_EMOJI_SESSION_ID="📡"
+SLB_EMOJI_SESSION_ID="📡"          # decorative — model, folder, git, counters, …
 SLB_EMOJI_MODEL_OPUS="🐉"
+
+SLB_EMOJI_STATUS_CIRCLE_RED="🟥"   # status — the color-coded usage circles,
+SLB_EMOJI_STATUS_CTX_WARNING="🚨" # the context warning, the lite bar markers
 ```
 
-All ~20 keys, with their defaults, are listed commented-out at the bottom of
+`SLB_EMOJI_*` covers pure decoration; `SLB_EMOJI_STATUS_*` is a separate
+family for icons that encode a danger/warn/ok threshold rather than just an
+identity — kept apart so it's never ambiguous which set an icon belongs to.
+All ~30 keys, with their defaults, are listed commented-out at the bottom of
 `config.sh` — uncomment and edit any of them, or just tell Claude what icon
 you want. Full list and where each one renders:
-[configuration.md#emoji-icons](skills/claude-statusline-beauty/references/configuration.md#emoji-icons).
+[configuration.md#emoji-icons](skills/claude-statusline-beauty/references/configuration.md#emoji-icons)
+and
+[configuration.md#status-icons](skills/claude-statusline-beauty/references/configuration.md#status-icons).
 
 ### Manage it directly
 
