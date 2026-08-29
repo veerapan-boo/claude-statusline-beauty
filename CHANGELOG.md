@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-08-29
+
+### Fixed
+- **Lite mode computed the RAM and CPU bars every render and then threw the
+  result away** — `SLB_SHOW_RAM`/`SLB_SHOW_CPU` gated the `sysctl`/`vm_stat`/
+  load-average work, but lite mode's own "don't render these bars at all"
+  rule lived only in the *display* code further down, so the computation
+  ran regardless. `SLB_LITE_MODE` now also gates the computation itself —
+  confirmed via a fork-counting shim that lite mode makes zero
+  `sysctl`/`vm_stat` calls now, down from up to 4. Normal mode is
+  unaffected; output verified byte-for-byte identical in both modes.
+
 ## [1.6.1] - 2026-08-29
 
 ### Fixed

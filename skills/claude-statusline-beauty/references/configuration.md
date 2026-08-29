@@ -221,7 +221,10 @@ never quietly falls behind the docs.
   for the session's first 10 turns**, then it stops printing.
 - The ctx/5h/week circles collapse to two states: 🟢 under 75%, ⚪ at 75%+.
   The CPU/RAM bars keep the normal four-state circle regardless of this
-  switch — but they don't render at all in lite mode either way.
+  switch — but they don't render at all in lite mode either way, and the
+  underlying `sysctl`/`vm_stat`/load-average work is skipped outright rather
+  than computed and discarded, so `SLB_SHOW_CPU`/`SLB_SHOW_RAM` have no
+  effect (cost or otherwise) while lite mode is on.
 - The footer (version + `session_id`) and its separating blank line are
   omitted entirely — output ends right after the last bar (or the month
   line, when it's showing).

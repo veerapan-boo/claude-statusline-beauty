@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.6.1
+# statusline-beauty-version: 1.6.2
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -1301,12 +1301,16 @@ printf -v clock_str '%(%H:%M)T' -1
 
 # ── System resources (1,2,3) ──────────────────────────────────────
 # Both blocks are wholly skipped when their switch is off, so a user who turns
-# the bars off stops paying for free/df/nproc/awk as well.
+# the bars off stops paying for free/df/nproc/awk as well. Also skipped
+# entirely in lite mode, which never renders these bars regardless of the
+# switch (see the (( ! SLB_LITE_MODE )) guard around emit_bar "CPU"/"RAM"
+# further down) — computing sysctl/vm_stat/loadavg values nobody sees would
+# be pure waste.
 sys_cache_dir="$SLB_CACHE_DIR"
 ram_free="" ram_pct="" disk_free=""
 cpu_load="" cpu_pct=""
 
-if (( SLB_SHOW_RAM )); then
+if (( SLB_SHOW_RAM && ! SLB_LITE_MODE )); then
   # RAM % = (total - available) / total — "available" already accounts for
   # reclaimable cache, so this matches what most monitoring tools call "used".
   ram_total_mb="" ram_avail_mb=""
@@ -1392,7 +1396,7 @@ if (( SLB_SHOW_RAM )); then
   fi
 fi
 
-if (( SLB_SHOW_CPU )); then
+if (( SLB_SHOW_CPU && ! SLB_LITE_MODE )); then
   # CPU core count never changes during a session, yet `nproc` is a ~70ms process
   # spawn on Windows — cache it so only the first render on a machine pays for it.
   cpu_cores=""

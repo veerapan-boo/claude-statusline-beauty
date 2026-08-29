@@ -72,6 +72,10 @@ SLB_SHOW_CPU=0          # skips a load-average spawn every render
 `SLB_SHOW_MONTHLY` scans every transcript modified this month. It is cached and
 warms up over a few renders, but a machine with many long sessions pays for it.
 
+`SLB_SHOW_RAM`/`SLB_SHOW_CPU` have no effect at all in lite mode — it never
+renders those bars regardless of the switch, so the computation is skipped
+outright rather than computed and discarded. Only relevant in normal mode.
+
 The last three are individually smaller, but real: unlike the first three,
 `git`/`vm_stat`/load-average genuinely can't be skipped on a cache hit — a
 5-second internal cache absorbs the git spawns on rapid back-to-back renders,
