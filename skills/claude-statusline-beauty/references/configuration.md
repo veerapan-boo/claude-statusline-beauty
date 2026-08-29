@@ -133,6 +133,29 @@ SLB_EMOJI_STATUS_CIRCLE_RED=🟥
 SLB_EMOJI_STATUS_CTX_WARNING=🚨
 ```
 
+## Model name color (lite mode)
+
+| Key | Default | Effect |
+|---|---|---|
+| `SLB_MODEL_COLOR_LITE` | `AF87FF` | color of the model name in lite mode's line 1 |
+
+A hex color, `#` optional (`AF87FF` and `#AF87FF` both work). `AF87FF` is
+the same purple normal mode reserves for Sonnet, re-expressed as a 24-bit
+color so this key and the default share one code path. Unlike the other
+keys on this page, this one ships **active** in `config.sh` rather than
+commented — uncomment the alternate line instead of the default one to
+make the model name the same gray as everything else in lite mode:
+
+```sh
+SLB_MODEL_COLOR_LITE=AF87FF
+# SLB_MODEL_COLOR_LITE=BCBCBC   # same gray as everything else in lite mode
+```
+
+Only affects lite mode. Normal mode already colors the model name per
+model (Opus rainbow, Sonnet purple, everything else cyan) and isn't
+affected by this key. An invalid value (not six hex digits) falls back to
+the default purple rather than an unreadable escape sequence.
+
 ## Recipes
 
 **Make it as fast and quiet as possible** — no network, no month scan, no
@@ -186,9 +209,11 @@ A `config.sh` created before a key family existed (say, one from before
 `SLB_EMOJI_STATUS_*` was added) just never had it — there was nothing to
 show it. Rather than leaving that file permanently behind, `manage.sh
 update` checks for a `# statusline-beauty-config-version:` marker at the
-bottom of the file and appends whichever reference blocks are missing
-(commented out, with their defaults — identical text to what a fresh
-install gets), then updates the marker. Every line that was already there —
+bottom of the file and appends whichever blocks are missing — identical
+text to what a fresh install gets, which for most keys means commented
+reference lines, but a couple (like the lite-mode model color) ship with
+their documented default already active — then updates the marker. Every
+line that was already there —
 your values, your comments, your hand edits — is left completely untouched;
 this only ever adds what's missing. It runs automatically on every `update`,
 even when the deployed script itself is already current, so a config.sh
@@ -209,6 +234,7 @@ never quietly falls behind the docs.
 
 - Every color collapses to gray, except the model name, which keeps the purple
   normal mode reserves for Sonnet — no rainbow gradient anywhere, on any model.
+  Configurable: [`SLB_MODEL_COLOR_LITE`](#model-name-color-lite-mode).
 - Line 1: turns and, once `SLB_SHOW_TOOL_COUNTS` is on, agents/tools always
   print — even at `0`. Skills/mcp print only when non-zero.
 - Line 2: branch always prints when `SLB_SHOW_GIT` is on, even outside a

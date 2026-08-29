@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.7.0
+# statusline-beauty-version: 1.8.0
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -207,9 +207,9 @@ _local_midnight_epoch() {
 # of bug the jq shim above exists to prevent. So: only `KEY=VALUE` lines whose
 # key is a known SLB_* switch are honoured, and nothing in the file is ever
 # executed. Value validation is per-key-family below: the show/hide switches
-# and bar width stay restricted to a narrow safe charset, while SLB_EMOJI_*
-# values (icon overrides) are allowed any non-whitespace UTF-8, since an emoji
-# doesn't fit [A-Za-z0-9._-].
+# and bar width stay restricted to a narrow safe charset, SLB_EMOJI_* values
+# (icon overrides) are allowed any non-whitespace UTF-8 since an emoji doesn't
+# fit [A-Za-z0-9._-], and SLB_MODEL_COLOR_LITE takes a hex color.
 # An SLB_* variable already present in the environment wins over the file, which
 # makes one-off overrides (and the installer's smoke test) possible.
 _slb_cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/statusline-beauty/config.sh"
@@ -234,6 +234,10 @@ if [ -r "$_slb_cfg" ]; then
       # Show/hide switches and bar width — narrow charset, unchanged from before.
       SLB_SHOW_MONTHLY|SLB_SHOW_GIT|SLB_SHOW_TOOL_COUNTS|SLB_SHOW_CPU|SLB_SHOW_RAM|SLB_CHECK_LATEST|SLB_SHOW_FOOTER|SLB_BAR_WIDTH|SLB_LITE_MODE)
         [[ "$_v" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+        ;;
+      # Model name color (lite mode only) — six hex digits, '#' optional.
+      SLB_MODEL_COLOR_LITE)
+        [[ "$_v" =~ ^#?[0-9A-Fa-f]{6}$ ]] || continue
         ;;
       *) continue ;;                                # unknown key — ignore
     esac
@@ -387,16 +391,34 @@ C_COST_HL='\033[1;38;5;220m'  # bold gold   — session cost, made to stand out
 C_MONTH_HL='\033[1;38;5;39m'  # bold azure blue — month-to-date cost/tokens
 C_EFRT='\033[0;37m'    # white  — effort / thinking
 
+# Six hex digits ('#' optional) -> a bold 24-bit ANSI color, e.g.
+# "AF87FF" -> '\033[1;38;2;175;135;255m'. Pure bash arithmetic (base-16 via
+# the `16#` prefix) — no fork. Bold matches the weight the model name has
+# always had here; SLB_MODEL_COLOR_LITE controls color, not weight.
+_hex_to_bold_ansi() {
+  local hex=${1#\#}
+  [[ "$hex" =~ ^[0-9A-Fa-f]{6}$ ]] || return 1
+  printf '\033[1;38;2;%d;%d;%dm' "$((16#${hex:0:2}))" "$((16#${hex:2:2}))" "$((16#${hex:4:2}))"
+}
+
 # Lite mode: every color collapses to plain gray except the model name, which
-# keeps the purple that normal mode reserves for Sonnet — no rainbow, no
-# per-segment color coding. Only reassigning the variables (not the logic
-# below) keeps normal mode byte-for-byte unaffected by this block.
+# keeps a bold accent color (purple by default) — no rainbow, no per-segment
+# color coding. Only reassigning the variables (not the logic below) keeps
+# normal mode byte-for-byte unaffected by this block.
 if (( SLB_LITE_MODE )); then
   # C_DIM (bright-black, \033[0;90m) reads too dark/washed-out for body text —
   # 256-color light gray instead, kept separate from C_DIM so normal mode
   # (which still uses C_DIM for its separator/default-dirty-color) is untouched.
   C_DIM='\033[38;5;250m'
+  # Unset (no config, or a config.sh predating this key) keeps the exact
+  # original literal — byte-for-byte unchanged output for anyone who hasn't
+  # touched this setting. Only an explicit SLB_MODEL_COLOR_LITE goes through
+  # the hex conversion; a malformed value falls back to the same literal
+  # rather than an unreadable escape sequence.
   C_MODEL="$C_MODEL_SONNET"
+  if [ -n "${SLB_MODEL_COLOR_LITE:-}" ]; then
+    C_MODEL=$(_hex_to_bold_ansi "$SLB_MODEL_COLOR_LITE") || C_MODEL="$C_MODEL_SONNET"
+  fi
   C_PATH="$C_DIM"; C_GIT="$C_DIM"; C_VIM="$C_DIM"; C_INFO="$C_DIM"
   C_BAR="$C_DIM"; C_YEL="$C_DIM"; C_ADD="$C_DIM"; C_DEL="$C_DIM"
   C_RED="$C_DIM"; C_WARN="$C_DIM"; C_VERLINE="$C_DIM"; C_LTS="$C_DIM"

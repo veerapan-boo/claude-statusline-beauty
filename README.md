@@ -190,7 +190,7 @@ Lite mode is a different layout, not just a recolored normal mode:
 | You say | Command | Notes |
 |---|---|---|
 | `/claude-statusline-beauty` (nothing installed yet) | `manage.sh install` | Checks the latest GitHub release, installs it (or the skill's own bundled copy if that's newer), writes a default `config.sh`, wires `settings.json`. |
-| "update the status line" | `manage.sh update` | Pulls whatever the **latest published release** is and overwrites the installed script. Every existing line in `config.sh` and `settings.json` is untouched, so your mode and every switch (including hand-set `SLB_EMOJI_*` icons) survive exactly as they were. **Also syncs the skill package itself** (this README's `SKILL.md`, `manage.sh`, references/*.md — the files `npx skills add` installed) whenever `status --json`'s `skill_package_stale` field is true, and **appends any config reference block your `config.sh` predates** (commented out, nothing active) so it never falls behind the docs — one `update` covers all three. Exception: if the skill package currently running predates this self-sync feature entirely, it can't fetch code it doesn't have — that needs one manual [re-install](#install) to bootstrap onto a version that can self-sync from then on. |
+| "update the status line" | `manage.sh update` | Pulls whatever the **latest published release** is and overwrites the installed script. Every existing line in `config.sh` and `settings.json` is untouched, so your mode and every switch (including hand-set `SLB_EMOJI_*` icons) survive exactly as they were. **Also syncs the skill package itself** (this README's `SKILL.md`, `manage.sh`, references/*.md — the files `npx skills add` installed) whenever `status --json`'s `skill_package_stale` field is true, and **appends any config block your `config.sh` predates** (most are commented reference — a couple, like the lite-mode model color, ship with their documented default already active) so it never falls behind the docs — one `update` covers all three. Exception: if the skill package currently running predates this self-sync feature entirely, it can't fetch code it doesn't have — that needs one manual [re-install](#install) to bootstrap onto a version that can self-sync from then on. |
 | "update and switch to lite mode" | update, then `manage.sh lite` | Two steps back to back. Since `update` now syncs the skill package too, step 2 knows about `lite` as long as the running skill package has self-sync at all — see the bootstrap exception above. |
 | "switch to lite mode" / "back to normal" | `manage.sh lite` / `manage.sh normal` | Flips `SLB_LITE_MODE` in the existing `config.sh` in place. No download, no reinstall, no restart. Recreates `config.sh` with defaults first if it was deleted, instead of erroring. |
 | "reset my config, I messed it up" | `manage.sh reset-config` | Backs up the current `config.sh` (timestamped, under `backups/`) and rewrites every switch back to its documented default — **except** `SLB_LITE_MODE`, which is carried over as-is, so a reset can't silently bounce you out of lite mode. |
@@ -256,6 +256,17 @@ in the docs. Full list and where each one renders:
 [configuration.md#emoji-icons](skills/claude-statusline-beauty/references/configuration.md#emoji-icons)
 and
 [configuration.md#status-icons](skills/claude-statusline-beauty/references/configuration.md#status-icons).
+
+Lite mode's model name color is separate — `SLB_MODEL_COLOR_LITE`, a hex
+color, purple by default and shipped **active** (not commented) in
+`config.sh`, with a gray alternative commented right below it:
+
+```sh
+SLB_MODEL_COLOR_LITE=AF87FF
+# SLB_MODEL_COLOR_LITE=BCBCBC   # same gray as everything else in lite mode
+```
+
+[configuration.md#model-name-color-lite-mode](skills/claude-statusline-beauty/references/configuration.md#model-name-color-lite-mode).
 
 ### Manage it directly
 

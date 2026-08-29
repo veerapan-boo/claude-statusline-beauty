@@ -530,7 +530,7 @@ write_marker() {
 # is added, and never edit an existing block's content in place — that would
 # make an already-synced config.sh permanently out of sync with no way to
 # detect it. Add a new _CFG_BLOCK_* instead.
-CONFIG_SCHEMA_VERSION=3
+CONFIG_SCHEMA_VERSION=4
 
 _CFG_BLOCK_BASE=$(cat <<'CFG'
 # statusline-beauty configuration
@@ -644,6 +644,19 @@ _CFG_BLOCK_EMOJI_STATUS=$(cat <<'CFG'
 CFG
 )
 
+# Schema version 4.
+_CFG_BLOCK_MODEL_COLOR=$(cat <<'CFG'
+# ── Model name color (lite mode only) ────────────────────────────────
+# Accepts a hex color, '#' optional. Purple is active by default — comment
+# it out and uncomment the line below instead to make the model name blend
+# in with the rest of lite mode's plain gray text. No effect in normal
+# mode: the model already gets a per-model color there (Opus rainbow /
+# Sonnet purple / other cyan).
+SLB_MODEL_COLOR_LITE=AF87FF
+# SLB_MODEL_COLOR_LITE=BCBCBC   # same gray as everything else in lite mode
+CFG
+)
+
 # Overwrites $CONFIG_FILE unconditionally with every documented block,
 # concatenated — callers that must not clobber an existing file
 # (write_default_config) check for one first; callers that explicitly want a
@@ -653,6 +666,7 @@ _write_default_config_template() {
     printf '%s\n' "$_CFG_BLOCK_BASE"
     printf '\n%s\n' "$_CFG_BLOCK_EMOJI"
     printf '\n%s\n' "$_CFG_BLOCK_EMOJI_STATUS"
+    printf '\n%s\n' "$_CFG_BLOCK_MODEL_COLOR"
     printf '\n# statusline-beauty-config-version: %s (tracks which optional blocks above are present — leave this line alone; manage.sh update reads and rewrites it)\n' "$CONFIG_SCHEMA_VERSION"
   } > "$CONFIG_FILE"
 }
@@ -676,6 +690,7 @@ sync_config_blocks() {
   (( have >= CONFIG_SCHEMA_VERSION )) && return 0
   (( have < 2 )) && printf '\n%s\n' "$_CFG_BLOCK_EMOJI" >> "$CONFIG_FILE"
   (( have < 3 )) && printf '\n%s\n' "$_CFG_BLOCK_EMOJI_STATUS" >> "$CONFIG_FILE"
+  (( have < 4 )) && printf '\n%s\n' "$_CFG_BLOCK_MODEL_COLOR" >> "$CONFIG_FILE"
   # Replace the marker in place if one exists, else append a fresh one —
   # same read-modify-write shape as set_config_value below.
   if grep -qE '^# statusline-beauty-config-version:' "$CONFIG_FILE" 2>/dev/null; then
@@ -686,7 +701,7 @@ sync_config_blocks() {
   else
     printf '\n# statusline-beauty-config-version: %s (tracks which optional blocks above are present — leave this line alone; manage.sh update reads and rewrites it)\n' "$CONFIG_SCHEMA_VERSION" >> "$CONFIG_FILE"
   fi
-  say "  ${D}config.sh: appended newly available emoji reference block(s) — commented out, nothing active changed${N}"
+  say "  ${D}config.sh: appended newly available reference block(s) for keys added since this file was created${N}"
 }
 
 # Rewrite a single KEY=VALUE line in config.sh in place, preserving every

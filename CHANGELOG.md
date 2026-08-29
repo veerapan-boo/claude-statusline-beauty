@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-29
+
+### Added
+- **`SLB_MODEL_COLOR_LITE`** — the model name's color in lite mode is now
+  configurable, as a hex color (`#` optional). Purple (`AF87FF`, the same
+  shade normal mode reserves for Sonnet, re-expressed as 24-bit color) is
+  the default. Unlike every other config key added so far, this one ships
+  **active** in `config.sh` rather than commented, with a gray alternative
+  (`BCBCBC` — the same shade everything else in lite mode uses) commented
+  right below it, so switching is just swapping which line is active. An
+  invalid value falls back to the default purple rather than an unreadable
+  escape sequence. Normal mode is unaffected — it already colors the model
+  per model and has no equivalent key. Leaving the key unset (or a
+  `config.sh` that predates it) renders byte-for-byte identical to before
+  this release; `manage.sh update` appends the new block, active default
+  included, to any config.sh missing it. Full reference:
+  [configuration.md#model-name-color-lite-mode](skills/claude-statusline-beauty/references/configuration.md#model-name-color-lite-mode).
+
 ## [1.7.0] - 2026-08-29
 
 ### Changed
