@@ -38,11 +38,11 @@ SLB_SHOW_MONTHLY=0 bash ~/.claude/statusline-beauty/statusline.sh < fixture.json
 
 | Key | Default | Effect when `0` | Cost when `1` |
 |---|---|---|---|
-| `SLB_SHOW_MONTHLY` | `1` | drops the `📅 ~$41.20/mo` segment | **highest** — scans every transcript modified this month (cached, but the first warm-up is the slowest thing here) |
-| `SLB_SHOW_GIT` | `1` | drops the whole git line | one `git status --porcelain=v2` + one `git log -1` |
+| `SLB_SHOW_MONTHLY` | `1` | drops the `📅 ~$41.20/mo` segment | **highest** — scans every transcript modified this month (cached, but the first warm-up is the slowest thing here). In lite mode this only actually runs for the session's first 10 turns — past that the segment stops printing and the scan is skipped outright, `SLB_SHOW_MONTHLY` or not |
+| `SLB_SHOW_GIT` | `1` | drops the whole git line | one `git status --porcelain=v2` + one `git log -1`, memoized for 5s |
 | `SLB_SHOW_TOOL_COUNTS` | `1` | drops `🧩 skills / 🤖 agents / 🔌 mcp / 🔧 tools` | one `jq` pass over the session transcript and every subagent transcript |
-| `SLB_SHOW_CPU` | `1` | drops the CPU bar | reads `/proc/loadavg`; `nproc` once per machine (cached) |
-| `SLB_SHOW_RAM` | `1` | drops the RAM bar and the disk-free suffix | `free` or `/proc/meminfo`, plus `df` at most once a minute |
+| `SLB_SHOW_CPU` | `1` | drops the CPU bar | reads `/proc/loadavg`; `nproc` once per machine (cached). **No effect in lite mode** — that bar never renders there, so the read never happens either |
+| `SLB_SHOW_RAM` | `1` | drops the RAM bar and the disk-free suffix | `free` or `/proc/meminfo`, plus `df` at most once a minute. **No effect in lite mode** — same reason |
 | `SLB_CHECK_LATEST` | `1` | drops the `(LTS)` tag next to the version | a background `npm view` at most every 6 hours — **the only network call the status line makes** |
 | `SLB_SHOW_FOOTER` | `1` | drops the version + `session_id` footer line | none |
 | `SLB_BAR_WIDTH` | `25` | — | width of every usage bar, clamped to 10–60 |
@@ -216,9 +216,13 @@ never quietly falls behind the docs.
 - Reset countdowns on the 5h/week bars use `⟳` instead of "resets". The ctx
   bar drops its in:/out: token figures in favor of a bare `🌎` marker (shown
   only when there's session token data); the 5h bar always ends with `🧩`.
-- The `📀 cache HR` and `📈 avg/turn` segments stay dropped from anywhere.
+- The `📀 cache HR` and `📈 avg/turn` segments, along with `💲/turn`
+  (cost-per-turn), stay dropped from anywhere in lite mode — and since
+  they're never shown there, they're never *computed* there either.
 - Month-to-date cost/tokens gets its own trailing line (`💲…`) — but **only
-  for the session's first 10 turns**, then it stops printing.
+  for the session's first 10 turns**, then it stops printing — and past
+  turn 10, the underlying month scan (the single heaviest operation in the
+  file) is skipped outright rather than computed and discarded.
 - The ctx/5h/week circles collapse to two states: 🟢 under 75%, ⚪ at 75%+.
   The CPU/RAM bars keep the normal four-state circle regardless of this
   switch — but they don't render at all in lite mode either way, and the

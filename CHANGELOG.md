@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-08-29
+
+### Changed
+- **Lite mode no longer computes what it never displays**, closing three
+  more gaps found by auditing every lite-mode-hidden segment specifically
+  for wasted work, on top of the RAM/CPU fix in 1.6.2:
+  - `monthly_tokens()` — the single heaviest operation in the file — used
+    to run as a background job on every render regardless of mode, even
+    though lite mode's own trailing month line only ever prints for a
+    session's first 10 turns. Past turn 10, it was scanning a month of
+    transcripts for a number that would never be shown again that session.
+    The turn count is now known before the decision to launch it, so it's
+    skipped outright once lite mode is past its own display cutoff — with
+    the month-to-date *spend ledger* (a separate function, `monthly_cost()`)
+    completely unaffected, since that has to keep accumulating regardless
+    of what's displayed.
+  - `cost_per_turn` and `cache_rate` (each an `awk` fork) are only ever
+    shown on normal mode's stats line — lite mode never displays them, so
+    it no longer computes them either.
+  - Removed a fully dead code path: `duration_str`/`clock_str`/the
+    first-timestamp extraction that fed them were computed in both modes
+    but read by nothing downstream — this was true before this release too,
+    not lite-mode-specific.
+  - Confirmed via direct filesystem inspection (checking whether the
+    monthly cache bucket gets created at all) that the skip is real, not
+    just untimed, and that the ledger keeps writing regardless. Output
+    verified byte-for-byte identical across normal mode, lite mode within
+    the first 10 turns, and lite mode past turn 10.
+
 ## [1.6.2] - 2026-08-29
 
 ### Fixed

@@ -2,7 +2,7 @@
 # statusline-beauty — a multi-line status line for Claude Code
 # https://github.com/veerapan-boo/claude-statusline-beauty  ·  MIT
 #
-# statusline-beauty-version: 1.6.2
+# statusline-beauty-version: 1.7.0
 #
 # Layout: header line + stats line (leads with bold session cost +
 # month-to-date estimate) + git line (branch, ahead/behind, dirty files,
@@ -1235,6 +1235,35 @@ _git_stats() {
   printf '%s' "$line"
 }
 
+# ── Session metadata: turn count ───────────────────────────────────
+# Computed here, before the parallel launch block below, specifically so
+# want_monthly (right after) can use it to decide whether monthly_tokens()
+# is worth launching at all — moving this earlier costs nothing (it depends
+# only on $transcript, already known) and nothing between here and its old
+# position depended on ordering.
+#
+# Used to compute first_ts -> a session "duration_str" and a "clock_str"
+# here too, but nothing downstream ever read either variable — dead since
+# whatever consumed them was removed. Deleted along with the now-pointless
+# timestamp capture in the awk pass; only the turn count is actually used
+# (lite line 1, normal mode's stats line, and want_monthly below).
+turns=0
+if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+  turns=$(awk '/"role":"assistant"/{c++} END{print c+0}' "$transcript" 2>/dev/null)
+  turns=${turns:-0}
+fi
+
+# monthly_tokens() is the single heaviest operation in the file — it scans
+# every transcript modified this month. Lite mode's own trailing month line
+# only ever prints for the session's first 10 turns (see the SLB_LITE_MODE
+# turns<=10 gate on the month line further down) — past that, running this
+# at all, even backgrounded, even cache-hit, is scanning a month of
+# transcripts for a number nobody will see again this session. Decided once
+# here and reused by both the launch below and its consumer further down,
+# so they can never disagree with each other.
+want_monthly=0
+(( SLB_SHOW_MONTHLY )) && { (( ! SLB_LITE_MODE )) || (( turns <= 10 )); } && want_monthly=1
+
 # ── Parallel producers (D) ────────────────────────────────────────
 # Launch the independent heavy work — token sums, the agent/skill scan, git
 # status — concurrently so their process-spawn latencies OVERLAP instead of
@@ -1261,7 +1290,7 @@ fi
 # point of the switch.
 if [ -n "$_par" ]; then
   session_tokens "$transcript"   > "$_par/session"    2>/dev/null &
-  (( SLB_SHOW_MONTHLY ))     && { monthly_tokens                 > "$_par/monthly"    2>/dev/null & }
+  (( want_monthly ))         && { monthly_tokens                 > "$_par/monthly"    2>/dev/null & }
   # Not gated on SLB_SHOW_MONTHLY: the ledger has to keep accumulating even
   # while the segment is hidden, or turning the display off for an afternoon
   # would erase that afternoon's spend for good. It is an awk over a handful of
@@ -1270,34 +1299,6 @@ if [ -n "$_par" ]; then
   (( SLB_SHOW_TOOL_COUNTS )) && { last_agent_skill "$transcript" > "$_par/agentskill" 2>/dev/null & }
   (( SLB_SHOW_GIT ))         && { _git_stats "$cwd"              > "$_par/git"        2>/dev/null & }
 fi
-
-# ── Session metadata: turns, duration, clock ──────────────────────
-turns=0
-duration_str=""
-if [ -n "$transcript" ] && [ -f "$transcript" ]; then
-  # Was grep -c (turns) + head|grep -o|cut (first timestamp) — 4 forks over the
-  # same file. One awk pass does both: counts assistant-role lines across the
-  # whole file, and pulls the timestamp value out of line 1 only, using the
-  # leftmost match exactly like grep -o's first hit did.
-  IFS='|' read -r turns first_ts < <(awk '
-    NR == 1 { if (match($0, /"timestamp":"[^"]*"/)) ts = substr($0, RSTART + 13, RLENGTH - 14) }
-    /"role":"assistant"/ { c++ }
-    END { printf "%d|%s", c + 0, ts }
-  ' "$transcript" 2>/dev/null)
-  turns=${turns:-0}
-  if [ -n "$first_ts" ]; then
-    start_epoch=$(_iso_to_epoch "$first_ts" 2>/dev/null)
-    if [ -n "$start_epoch" ]; then
-      printf -v _now_epoch '%(%s)T' -1
-      elapsed=$(( _now_epoch - start_epoch ))
-      if   (( elapsed < 60 ));   then duration_str="${elapsed}s"
-      elif (( elapsed < 3600 )); then duration_str="$(( elapsed / 60 ))m"
-      else                            duration_str="$(( elapsed / 3600 ))h $(( (elapsed % 3600) / 60 ))m"
-      fi
-    fi
-  fi
-fi
-printf -v clock_str '%(%H:%M)T' -1
 
 # ── System resources (1,2,3) ──────────────────────────────────────
 # Both blocks are wholly skipped when their switch is off, so a user who turns
@@ -1444,7 +1445,7 @@ if [ -n "$_par" ] && [ -s "$_par/monthcost" ]; then
 else
   month_dollars=$(monthly_cost "$session_id" "$cost")
 fi
-if (( SLB_SHOW_MONTHLY )); then
+if (( want_monthly )); then
   if [ -n "$_par" ] && [ -s "$_par/monthly" ]; then
     read -r month_in month_out month_cr month_c5 month_c1 month_warming < "$_par/monthly"
   else
@@ -1598,20 +1599,26 @@ fi
 # join parts with a dim pipe separator:  model | path | git | …
 sep="$(printf "  ${C_DIM}|${C_RESET}  ")"
 
-# session analytics (15,16,17) — uses sum_in/sum_out/sum_cache from early call
+# session analytics (15,16,17) — uses sum_in/sum_out/sum_cache from early call.
+# Only ever displayed on normal mode's stats line (lite mode never shows
+# cost/turn, cache HR or avg/turn), so skip computing them at all in lite
+# mode — cost_per_turn and cache_rate each cost an awk fork otherwise spent
+# on a value nobody sees.
 cost_per_turn=""
-if [ -n "$cost" ] && (( turns > 0 )); then
-  cost_per_turn=$(awk -v c="$cost" -v t="$turns" 'BEGIN{v=c/t; if(v>=0.01) printf "$%.3f",v; else printf "$%.4f",v}')
-fi
 cache_rate=""
-total_for_cache=$(( ${sum_in:-0} + ${sum_cache:-0} ))
-if (( total_for_cache > 0 && ${sum_cache:-0} > 0 )); then
-  cache_rate=$(awk -v c="${sum_cache:-0}" -v t="$total_for_cache" 'BEGIN{printf "%d", c*100/t}')
-fi
 avg_tok=""
-total_session_toks=$(( ${sum_in:-0} + ${sum_out:-0} ))
-if (( turns > 0 && total_session_toks > 0 )); then
-  avg_tok=$(humanize_tokens $(( total_session_toks / turns )))
+if (( ! SLB_LITE_MODE )); then
+  if [ -n "$cost" ] && (( turns > 0 )); then
+    cost_per_turn=$(awk -v c="$cost" -v t="$turns" 'BEGIN{v=c/t; if(v>=0.01) printf "$%.3f",v; else printf "$%.4f",v}')
+  fi
+  total_for_cache=$(( ${sum_in:-0} + ${sum_cache:-0} ))
+  if (( total_for_cache > 0 && ${sum_cache:-0} > 0 )); then
+    cache_rate=$(awk -v c="${sum_cache:-0}" -v t="$total_for_cache" 'BEGIN{printf "%d", c*100/t}')
+  fi
+  total_session_toks=$(( ${sum_in:-0} + ${sum_out:-0} ))
+  if (( turns > 0 && total_session_toks > 0 )); then
+    avg_tok=$(humanize_tokens $(( total_session_toks / turns )))
+  fi
 fi
 
 if (( SLB_LITE_MODE )); then
